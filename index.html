@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Agenda & Manajemen Kegiatan Bidan — agenda harian, jadwal piket, dokumentasi kegiatan, dan laporan aktivitas bidan.">
+  <meta name="theme-color" id="meta-theme" content="#0F766E">
+  <title>Agenda &amp; Manajemen Kegiatan Bidan</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" href="./favicon.png">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Agenda Bidan">
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+
+  <!-- ===================== SHELL APLIKASI ===================== -->
+  <div id="app-shell" class="app-shell hidden">
+
+    <!-- Sidebar (desktop) -->
+    <aside id="sidebar" class="sidebar" aria-label="Menu utama">
+      <div class="sidebar-brand">
+        <img src="./icon-192.png" alt="Logo" class="brand-logo">
+        <div class="brand-text">
+          <strong>Agenda Bidan</strong>
+          <small id="sidebar-sub">Manajemen Kegiatan</small>
+        </div>
+        <button class="icon-btn sidebar-close" data-action="toggle-sidebar" aria-label="Tutup menu">✕</button>
+      </div>
+
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <a href="#" class="nav-item" data-nav="dashboard" data-icon="🏠"><span class="nav-ico">🏠</span>Dashboard</a>
+        <a href="#" class="nav-item" data-nav="agenda" data-icon="📋"><span class="nav-ico">📋</span>Agenda</a>
+        <a href="#" class="nav-item" data-nav="kalender" data-icon="📅"><span class="nav-ico">📅</span>Kalender</a>
+        <a href="#" class="nav-item" data-nav="piket" data-icon="🕐"><span class="nav-ico">🕐</span>Jadwal Piket</a>
+        <a href="#" class="nav-item" data-nav="master" data-icon="🗂️"><span class="nav-ico">🗂️</span>Master Kegiatan</a>
+        <a href="#" class="nav-item" data-nav="laporan" data-icon="📊"><span class="nav-ico">📊</span>Laporan</a>
+        <a href="#" class="nav-item" data-nav="pengaturan" data-icon="⚙️"><span class="nav-ico">⚙️</span>Pengaturan</a>
+        <a href="#" class="nav-item" data-nav="tentang" data-icon="ℹ️"><span class="nav-ico">ℹ️</span>Tentang</a>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="side-user">
+          <img id="side-avatar" src="" alt="" class="avatar avatar-sm hidden">
+          <div class="side-user-text">
+            <strong id="side-name">Bidan</strong>
+            <small id="side-place">—</small>
+          </div>
+        </div>
+        <button class="btn btn-soft btn-block" data-action="lock">🔒 Kunci Aplikasi</button>
+      </div>
+    </aside>
+    <div id="sidebar-overlay" class="sidebar-overlay hidden" data-action="toggle-sidebar"></div>
+
+    <!-- Area utama -->
+    <div class="main-wrap">
+
+      <!-- Bar atas -->
+      <header id="topbar" class="topbar">
+        <button class="icon-btn" data-action="toggle-sidebar" aria-label="Buka menu">☰</button>
+        <div class="topbar-title">
+          <h2 id="view-title">Dashboard</h2>
+          <span id="view-subtitle" class="topbar-sub"></span>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" data-action="open-notifs" aria-label="Notifikasi" title="Notifikasi">
+            🔔<span id="notif-badge" class="badge-dot hidden"></span>
+          </button>
+          <button class="icon-btn" id="theme-quick" data-action="toggle-theme" aria-label="Ganti tema" title="Ganti tema">🌙</button>
+          <button class="icon-btn" data-action="sync" aria-label="Sinkronkan" title="Sinkronkan">🔄</button>
+        </div>
+      </header>
+
+      <!-- Indikator tarik-untuk-muat-ulang -->
+      <div id="pull-indicator" class="pull-indicator"><span class="spinner"></span><span id="pull-text">Tarik untuk sinkron</span></div>
+
+      <!-- Konten -->
+      <main id="main" class="main">
+
+        <section id="view-dashboard" class="view" data-title="Dashboard" data-sub="Ringkasan hari Anda"></section>
+
+        <section id="view-agenda" class="view" data-title="Agenda" data-sub="Daftar kegiatan Anda"></section>
+
+        <section id="view-kalender" class="view" data-title="Kalender" data-sub="Jadwal bulanan"></section>
+
+        <section id="view-piket" class="view" data-title="Jadwal Piket" data-sub="Pengingat dinas pribadi"></section>
+
+        <section id="view-master" class="view" data-title="Master Kegiatan" data-sub="Daftar kegiatan baku"></section>
+
+        <section id="view-laporan" class="view" data-title="Laporan" data-sub="Rekap & statistik aktivitas"></section>
+
+        <section id="view-pengaturan" class="view" data-title="Pengaturan" data-sub="Konfigurasi aplikasi"></section>
+
+        <section id="view-tentang" class="view" data-title="Tentang" data-sub="Informasi aplikasi"></section>
+
+      </main>
+
+      <!-- Navigasi bawah (mobile) -->
+      <nav id="bottom-nav" class="bottom-nav">
+        <a href="#" class="bn-item" data-nav="dashboard"><span class="bn-ico">🏠</span><span>Dashboard</span></a>
+        <a href="#" class="bn-item" data-nav="agenda"><span class="bn-ico">📋</span><span>Agenda</span></a>
+        <a href="#" class="bn-item" data-nav="kalender"><span class="bn-ico">📅</span><span>Kalender</span></a>
+        <a href="#" class="bn-item" data-nav="piket"><span class="bn-ico">🕐</span><span>Piket</span></a>
+        <a href="#" class="bn-item" id="bn-more" data-action="open-more"><span class="bn-ico">☰</span><span>Lainnya</span></a>
+      </nav>
+    </div>
+
+    <!-- Banner offline -->
+    <div id="offline-banner" class="offline-banner hidden">📡 Anda sedang offline — data dari cache</div>
+
+    <!-- Tombol aksi melayang -->
+    <button id="fab" class="fab" data-action="toggle-fab" aria-label="Tambah cepat">+</button>
+    <div id="fab-menu" class="fab-menu hidden">
+      <button class="fab-item" data-action="go-agenda-form"><span>📋</span> Tambah Agenda</button>
+      <button class="fab-item" data-action="go-piket-add"><span>🕐</span> Tambah Piket</button>
+      <button class="fab-item" data-action="go-master-form"><span>🗂️</span> Tambah Master</button>
+    </div>
+  </div>
+
+  <!-- Menu "Lainnya" (mobile) -->
+  <div id="more-sheet" class="sheet hidden">
+    <div class="sheet-head"><strong>Menu</strong><button class="icon-btn" data-action="close-more">✕</button></div>
+    <div class="sheet-body">
+      <button class="sheet-item" data-nav="master"><span class="nav-ico">🗂️</span> Master Kegiatan</button>
+      <button class="sheet-item" data-nav="laporan"><span class="nav-ico">📊</span> Laporan</button>
+      <button class="sheet-item" data-nav="pengaturan"><span class="nav-ico">⚙️</span> Pengaturan</button>
+      <button class="sheet-item" data-nav="tentang"><span class="nav-ico">ℹ️</span> Tentang</button>
+      <button class="sheet-item" data-action="lock"><span class="nav-ico">🔒</span> Kunci Aplikasi</button>
+    </div>
+  </div>
+
+  <!-- Panel notifikasi -->
+  <div id="notif-panel" class="sheet hidden">
+    <div class="sheet-head"><strong>Notifikasi</strong><button class="icon-btn" data-action="close-notifs">✕</button></div>
+    <div class="sheet-body" id="notif-list"></div>
+  </div>
+
+  <!-- Akar modal -->
+  <div id="modal-root"></div>
+
+  <!-- Toast -->
+  <div id="toast-root" aria-live="polite"></div>
+
+  <!-- Area cetak (laporan) -->
+  <div id="print-area"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
