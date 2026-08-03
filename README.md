@@ -114,9 +114,13 @@ Mode Demo**. Yang menghilangkan Mode Demo hanya **mengisi koneksi**:
 4. Jika Anda sudah mengisi data saat Mode Demo, pakai tombol
    **📤 Pindahkan Data Demo → Spreadsheet** di Dashboard untuk
    menyalinnya ke Spreadsheet.
-5. Setting koneksi tersimpan **per perangkat**. Perangkat lain cukup
-   diisi sekali dengan Spreadsheet ID & URL yang sama, lalu semua
-   perangkat melihat data yang sama.
+5. Setting koneksi tersimpan **per perangkat** (localStorage). Cara
+   termudah untuk HP kedua: di perangkat yang sudah terhubung buka
+   **Pengaturan → Umum → Koneksi Database → 📋 Salin Pengaturan
+   Koneksi** → kirim teksnya via WhatsApp → di HP buka aplikasi →
+   **Pengaturan → Umum → 📥 Tempel Pengaturan Koneksi** → Terapkan.
+   Tidak perlu mengetik ulang. Semua perangkat lalu melihat data yang
+   sama dari Spreadsheet.
 
 > Tip: setelah upload versi baru ke GitHub Pages, buka aplikasi di HP
 > dan **tarik ke bawah** (pull-to-refresh) atau tutup-buka aplikasi

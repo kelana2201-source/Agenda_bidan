@@ -340,7 +340,12 @@ const Store = {
   async saveMaster(it) { return isDemoMode() ? Demo.saveMaster(it) : api('saveMaster', { item: it, password: State._pwd }); },
   async deleteMaster(id) { return isDemoMode() ? Demo.deleteMaster(id) : api('deleteMaster', { id, password: State._pwd }); },
   async saveSettings(s) { return isDemoMode() ? Demo.saveSettings(s) : api('saveSettings', { settings: s, password: State._pwd }); },
-  async log(a, d) { try { return isDemoMode() ? Demo.log(a, d) : api('log', { aktivitas: a, detail: d || '' }); } catch (e) { return null; } },
+  async log(a, d) {
+    try {
+      if (isDemoMode()) return await Demo.log(a, d);
+      return await api('log', { aktivitas: a, detail: d || '' });
+    } catch (e) { return null; }
+  },
   async telegram(text) { return isDemoMode() ? Demo.telegram(text) : api('telegram', { text, password: State._pwd }); },
 };
 
@@ -484,12 +489,12 @@ const DD = {
     const sel = opts.find(o => o.v === cur) || null;
     return `
     <div class="dd" id="${id}" data-dd data-dd-id="${id}" data-dd-val="${escapeHtml(sel ? sel.v : '')}">
-      <button type="button" class="dd-btn" data-dd-toggle>
+      <button type="button" class="dd-btn" data-action="dd-toggle">
         <span class="dd-val">${sel ? escapeHtml(sel.l) : escapeHtml(placeholder || 'Pilih…')}</span>
         <span class="dd-caret">▾</span>
       </button>
       <div class="dd-panel hidden" data-dd-panel>
-        ${opts.map(o => '<button type="button" class="dd-opt ' + (o.v === cur ? 'sel' : '') + '" data-dd-opt="' + escapeHtml(o.v) + '">' + escapeHtml(o.l) + '<span class="dd-check">✓</span></button>').join('')}
+        ${opts.map(o => '<button type="button" class="dd-opt ' + (o.v === cur ? 'sel' : '') + '" data-action="dd-opt" data-dd-opt="' + escapeHtml(o.v) + '">' + escapeHtml(o.l) + '<span class="dd-check">✓</span></button>').join('')}
       </div>
     </div>`;
   },
@@ -693,9 +698,10 @@ function renderDashboard() {
   </div>
 
   ${isDemoMode() ? `<div class="card mb-16" style="border-left:5px solid var(--amber);background:var(--amber-soft)">
-    <div class="small"><b>⚠️ Mode Demo aktif</b> — aplikasi belum terhubung Google Spreadsheet, jadi data hanya tersimpan di perangkat ini (ubah di HP lain tidak akan tampil).</div>
+    <div class="small"><b>⚠️ Mode Demo aktif</b> — perangkat ini belum terhubung Google Spreadsheet (koneksi tersimpan per perangkat; mengisi di komputer tidak otomatis berlaku di HP). Data hanya tersimpan di perangkat ini.</div>
     <div class="flex flex-wrap mt-8">
       <button class="btn btn-primary btn-sm" data-action="go-koneksi">🔌 Hubungkan Database</button>
+      <button class="btn btn-soft btn-sm" data-action="paste-koneksi">📥 Tempel Koneksi dari Perangkat Lain</button>
       <button class="btn btn-soft btn-sm" data-action="migrate-demo">📤 Pindahkan Data Demo → Spreadsheet</button>
     </div>
   </div>` : ''}
@@ -1776,6 +1782,11 @@ function renderPengaturan() {
         <button class="btn btn-soft" data-action="conn-test">🔌 Uji Koneksi</button>
         <button class="btn btn-soft" data-action="db-reset">🗑️ Reset (hapus cache lokal)</button>
       </div>
+      <div class="flex flex-wrap mt-8">
+        <button class="btn btn-soft btn-sm" data-action="copy-koneksi">📋 Salin Pengaturan Koneksi</button>
+        <button class="btn btn-soft btn-sm" data-action="paste-koneksi">📥 Tempel Pengaturan Koneksi</button>
+      </div>
+      <p class="small muted mt-8">💡 <b>Cara cepat pindah koneksi antar perangkat:</b> di perangkat yang sudah terhubung, klik <b>Salin Pengaturan Koneksi</b> → kirim teksnya ke HP lain (WhatsApp) → di HP klik <b>Tempel Pengaturan Koneksi</b> → Terapkan. Tidak perlu mengetik ulang.</p>
     </div>
     `}
   </div>
@@ -1903,6 +1914,63 @@ async function testKoneksi(btn) {
     $('#conn-text').textContent = 'Tidak Terhubung';
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🔌 Uji Koneksi'; }
+  }
+}
+
+/* Salin / tempel pengaturan koneksi antar perangkat (karena koneksi
+   tersimpan per perangkat di localStorage) */
+function koneksiConfig() {
+  return {
+    spreadsheetId: State.settings.spreadsheetId || '',
+    gasUrl: State.settings.gasUrl || '',
+    sheets: State.settings.sheets || {},
+  };
+}
+
+function copyKoneksi() {
+  const txt = JSON.stringify(koneksiConfig());
+  openModal(`
+    <div class="field"><label>Salin teks ini, kirim ke HP lain (WhatsApp/email), lalu di HP gunakan <b>Tempel Pengaturan Koneksi</b>:</label>
+    <textarea class="input" id="cfg-copy" readonly style="min-height:130px;font-size:12px">${escapeHtml(txt)}</textarea></div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-soft" data-action="modal-close">Tutup</button>
+      <button type="button" class="btn btn-primary" data-action="copy-cfg-btn">📋 Salin ke Clipboard</button>
+    </div>`, { title: '📋 Salin Pengaturan Koneksi' });
+  const ta = $('#cfg-copy');
+  ta.addEventListener('focus', () => ta.select());
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => toast('✅ Teks tersalin otomatis — tempel di HP lain', 'success')).catch(() => { /* manual */ });
+  }
+}
+
+function pasteKoneksi() {
+  openModal(`
+    <div class="field"><label>Tempel teks pengaturan koneksi dari perangkat lain:</label>
+    <textarea class="input" id="cfg-paste" placeholder='{"spreadsheetId":"...","gasUrl":"https://script.google.com/macros/s/.../exec"}' style="min-height:130px;font-size:12px"></textarea></div>
+    <p class="login-error hidden" id="cfg-err"></p>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-soft" data-action="modal-close">Batal</button>
+      <button type="button" class="btn btn-primary" data-action="cfg-apply">✅ Terapkan</button>
+    </div>`, { title: '📥 Tempel Pengaturan Koneksi' });
+}
+
+async function applyKoneksi() {
+  try {
+    const cfg = JSON.parse($('#cfg-paste').value || '');
+    if (!cfg || !cfg.gasUrl || !cfg.spreadsheetId) throw new Error('data tidak lengkap');
+    State.settings.spreadsheetId = cfg.spreadsheetId;
+    State.settings.gasUrl = cfg.gasUrl;
+    if (cfg.sheets) State.settings.sheets = { ...State.settings.sheets, ...cfg.sheets };
+    cacheSettings();
+    closeModal();
+    toast('✅ Pengaturan diterapkan — menyinkronkan…', 'success');
+    try { await Store.saveSettings({ spreadsheetId: cfg.spreadsheetId, gasUrl: cfg.gasUrl, sheets: State.settings.sheets }); } catch (e) { /* demo/tanpa sandi — simpan lokal cukup */ }
+    await syncAll({ silent: false });
+    toast(isDemoMode() ? '⚠️ Koneksi belum aktif — cek URL Web App' : '🎉 Terhubung! Data Spreadsheet dimuat', isDemoMode() ? 'warn' : 'success');
+  } catch (err) {
+    const er = $('#cfg-err');
+    if (er) { er.textContent = 'Teks tidak valid: ' + err.message; er.classList.remove('hidden'); }
+    else toast('Teks tidak valid: ' + err.message, 'error');
   }
 }
 
@@ -2400,6 +2468,14 @@ function handleClick(e) {
     case 'master-del': deleteMaster(id); break;
     case 'go-koneksi': _tabAktif = 'umum'; navigate('pengaturan'); break;
     case 'migrate-demo': migrateDemoData(); break;
+    case 'copy-koneksi': copyKoneksi(); break;
+    case 'paste-koneksi': pasteKoneksi(); break;
+    case 'copy-cfg-btn': {
+      const ta = $('#cfg-copy');
+      if (ta) { ta.focus(); ta.select(); try { document.execCommand('copy'); toast('✅ Tersalin — tempel di HP lain', 'success'); } catch (e2) { toast('Salin manual: pilih teks, lalu salin', 'warn'); } }
+      break;
+    }
+    case 'cfg-apply': applyKoneksi(); break;
     case 'unlock-umum': requirePassword().then(ok => { if (ok) renderPengaturan(); }); break;
 
     case 'tab-set':
