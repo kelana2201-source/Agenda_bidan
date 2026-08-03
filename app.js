@@ -1928,25 +1928,47 @@ function koneksiConfig() {
 }
 
 function copyKoneksi() {
+  // Jaga-jaga: di perangkat yang belum terhubung tidak ada yang bisa disalin
+  if (!State.settings.gasUrl) {
+    toast('ℹ️ Perangkat ini belum terhubung — tidak ada pengaturan untuk disalin. Gunakan "📥 Tempel Pengaturan Koneksi" dari perangkat yang sudah terhubung.', 'warn', 5000);
+    return;
+  }
   const txt = JSON.stringify(koneksiConfig());
   openModal(`
-    <div class="field"><label>Salin teks ini, kirim ke HP lain (WhatsApp/email), lalu di HP gunakan <b>Tempel Pengaturan Koneksi</b>:</label>
-    <textarea class="input" id="cfg-copy" readonly style="min-height:130px;font-size:12px">${escapeHtml(txt)}</textarea></div>
+    <div class="field"><label><b>1.</b> Tampilkan QR ini di layar, lalu pindai dari HP lain (atau salin teks di bawah).</label>
+    <div style="text-align:center;background:var(--surface-2);border-radius:14px;padding:14px;margin-bottom:10px">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(txt)}" alt="QR Pengaturan Koneksi" style="width:200px;height:200px;margin:0 auto;border-radius:12px">
+      <div class="small muted mt-8">Di HP lain: Pengaturan → Umum → 📥 Tempel Pengaturan Koneksi → 📷 Scan QR</div>
+    </div></div>
+    <div class="field"><label><b>2.</b> Alternatif: salin teks di bawah (tekan lama pada teks → <b>Salin</b>):</label>
+    <textarea class="input" id="cfg-copy" readonly style="min-height:110px;font-size:12px">${escapeHtml(txt)}</textarea></div>
     <div class="modal-foot">
       <button type="button" class="btn btn-soft" data-action="modal-close">Tutup</button>
       <button type="button" class="btn btn-primary" data-action="copy-cfg-btn">📋 Salin ke Clipboard</button>
     </div>`, { title: '📋 Salin Pengaturan Koneksi' });
   const ta = $('#cfg-copy');
-  ta.addEventListener('focus', () => ta.select());
+  setTimeout(() => { try { ta.focus(); ta.select(); } catch (e) { /* abaikan */ } }, 150);
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt).then(() => toast('✅ Teks tersalin otomatis — tempel di HP lain', 'success')).catch(() => { /* manual */ });
+    navigator.clipboard.writeText(txt)
+      .then(() => toast('✅ Teks tersalin otomatis — tempel di perangkat lain', 'success'))
+      .catch(() => toast('⚠️ Salin manual: tekan lama pada teks → Salin', 'warn'));
+  } else {
+    toast('💡 Pilih teks lalu salin, atau gunakan tombol Scan QR di perangkat lain', 'info');
   }
 }
 
 function pasteKoneksi() {
   openModal(`
-    <div class="field"><label>Tempel teks pengaturan koneksi dari perangkat lain:</label>
-    <textarea class="input" id="cfg-paste" placeholder='{"spreadsheetId":"...","gasUrl":"https://script.google.com/macros/s/.../exec"}' style="min-height:130px;font-size:12px"></textarea></div>
+    <div class="card mb-12" style="background:var(--surface-2);text-align:center;padding:12px">
+      <div class="small muted mb-8">📷 <b>Paling mudah:</b> tampilkan QR "Salin Pengaturan Koneksi" di layar perangkat lain (komputer/HP yang sudah terhubung), lalu pindai di sini</div>
+      <video id="qr-video" playsinline muted style="width:100%;max-height:170px;border-radius:12px;background:#000;display:none"></video>
+      <div class="flex mt-8" style="justify-content:center;gap:8px">
+        <button type="button" class="btn btn-primary btn-sm" data-action="qr-scan">📷 Scan QR</button>
+        <button type="button" class="btn btn-soft btn-sm hidden" data-action="qr-stop">⏹ Hentikan</button>
+      </div>
+    </div>
+    <div class="field"><label>Atau tempel teks pengaturan (tekan lama pada kotak → <b>Tempel</b>):</label>
+    <textarea class="input" id="cfg-paste" placeholder='{"spreadsheetId":"...","gasUrl":"https://script.google.com/macros/s/.../exec"}' style="min-height:110px;font-size:12px"></textarea></div>
     <p class="login-error hidden" id="cfg-err"></p>
     <div class="modal-foot">
       <button type="button" class="btn btn-soft" data-action="modal-close">Batal</button>
@@ -1954,24 +1976,97 @@ function pasteKoneksi() {
     </div>`, { title: '📥 Tempel Pengaturan Koneksi' });
 }
 
-async function applyKoneksi() {
-  try {
-    const cfg = JSON.parse($('#cfg-paste').value || '');
-    if (!cfg || !cfg.gasUrl || !cfg.spreadsheetId) throw new Error('data tidak lengkap');
-    State.settings.spreadsheetId = cfg.spreadsheetId;
-    State.settings.gasUrl = cfg.gasUrl;
-    if (cfg.sheets) State.settings.sheets = { ...State.settings.sheets, ...cfg.sheets };
-    cacheSettings();
-    closeModal();
-    toast('✅ Pengaturan diterapkan — menyinkronkan…', 'success');
-    try { await Store.saveSettings({ spreadsheetId: cfg.spreadsheetId, gasUrl: cfg.gasUrl, sheets: State.settings.sheets }); } catch (e) { /* demo/tanpa sandi — simpan lokal cukup */ }
-    await syncAll({ silent: false });
-    toast(isDemoMode() ? '⚠️ Koneksi belum aktif — cek URL Web App' : '🎉 Terhubung! Data Spreadsheet dimuat', isDemoMode() ? 'warn' : 'success');
-  } catch (err) {
-    const er = $('#cfg-err');
-    if (er) { er.textContent = 'Teks tidak valid: ' + err.message; er.classList.remove('hidden'); }
-    else toast('Teks tidak valid: ' + err.message, 'error');
+/* ----- Pindai QR pengaturan (Chrome Android: BarcodeDetector) ----- */
+function stopQR() {
+  const video = $('#qr-video');
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+    video.style.display = 'none';
   }
+  const stopBtn = $('[data-action="qr-stop"]');
+  if (stopBtn) stopBtn.classList.add('hidden');
+  const scanBtn = $('[data-action="qr-scan"]');
+  if (scanBtn) scanBtn.classList.remove('hidden');
+}
+
+async function scanQR() {
+  const er = $('#cfg-err');
+  if (er) er.classList.add('hidden');
+  if (!('BarcodeDetector' in window)) {
+    if (er) { er.textContent = 'Browser ini tidak mendukung pemindai QR. Gunakan Chrome di Android, atau tempel teks secara manual.'; er.classList.remove('hidden'); }
+    return;
+  }
+  const video = $('#qr-video');
+  const stopBtn = $('[data-action="qr-stop"]');
+  const scanBtn = $('[data-action="qr-scan"]');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = stream;
+    video.style.display = 'block';
+    await video.play();
+    if (scanBtn) scanBtn.classList.add('hidden');
+    if (stopBtn) stopBtn.classList.remove('hidden');
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    for (let i = 0; i < 75; i++) { // ~30 detik
+      try {
+        const codes = await detector.detect(video);
+        if (codes.length) {
+          const txt = codes[0].rawValue;
+          let cfg = null;
+          try { cfg = JSON.parse(txt); } catch (e) {
+            const m = txt.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+/);
+            if (m) cfg = { gasUrl: m[0] };
+          }
+          if (cfg && cfg.gasUrl) {
+            stopQR();
+            const ta = $('#cfg-paste');
+            if (ta) ta.value = JSON.stringify(cfg);
+            toast('✅ QR terbaca — tekan "Terapkan"', 'success');
+            return;
+          }
+        }
+      } catch (e) { /* bingkai belum siap */ }
+      await sleep(400);
+    }
+    stopQR();
+    if (er) { er.textContent = 'QR tidak terdeteksi. Pastikan QR tampil utuh & cahaya cukup.'; er.classList.remove('hidden'); }
+  } catch (err) {
+    stopQR();
+    if (er) { er.textContent = 'Kamera tidak dapat diakses: ' + (err.message || err) + '. Gunakan tempel teks manual.'; er.classList.remove('hidden'); }
+  }
+}
+
+async function applyKoneksi() {
+  const raw = (($('#cfg-paste') || {}).value || '').trim();
+  const er = $('#cfg-err');
+  let cfg = null;
+  try { cfg = JSON.parse(raw); }
+  catch (e) {
+    // kemungkinan bukan JSON utuh — coba deteksi URL telanjang
+    const m = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+/);
+    if (m) cfg = { gasUrl: m[0] };
+  }
+  if (!cfg || typeof cfg !== 'object') {
+    if (er) { er.textContent = 'Teks tidak dikenali. Pastikan teks utuh mulai { sampai } (lihat panduan di menu Salin).'; er.classList.remove('hidden'); }
+    return;
+  }
+  const gasUrl = String(cfg.gasUrl || '').trim();
+  if (!gasUrl) {
+    if (er) { er.textContent = 'URL Web App kosong. Periksa kembali teks yang disalin.'; er.classList.remove('hidden'); }
+    return;
+  }
+  // terapkan
+  State.settings.gasUrl = gasUrl;
+  if (cfg.spreadsheetId) State.settings.spreadsheetId = String(cfg.spreadsheetId).trim();
+  if (cfg.sheets && typeof cfg.sheets === 'object') State.settings.sheets = { ...State.settings.sheets, ...cfg.sheets };
+  cacheSettings();
+  closeModal();
+  toast('✅ Pengaturan diterapkan — menyinkronkan…', 'success');
+  try { await Store.saveSettings({ spreadsheetId: State.settings.spreadsheetId, gasUrl, sheets: State.settings.sheets }); } catch (e) { /* simpan lokal cukup */ }
+  const ok = await syncAll({ silent: false });
+  if (ok) toast('🎉 Terhubung! Data dari Spreadsheet dimuat', 'success');
+  else toast('⚠️ Koneksi tersimpan, tetapi tidak bisa menjangkau server. Periksa URL Web App & internet.', 'warn', 5000);
 }
 
 function resetCacheLocal() {
