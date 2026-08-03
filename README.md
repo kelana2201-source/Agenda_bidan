@@ -96,6 +96,34 @@
 
 ---
 
+## 5.5 ❓ Kenapa Selalu "Mode Demo"? (Troubleshooting)
+
+**"Mode Demo" bukan berarti file Anda lama.** Ini adalah *status koneksi*:
+selama aplikasi belum dihubungkan ke Google Spreadsheet (URL Web App kosong),
+aplikasi sengaja berjalan dalam Mode Demo — datanya disimpan **hanya di
+perangkat itu** (localStorage), bukan di Spreadsheet.
+
+Jadi: mengunggah file baru ke GitHub Pages **tidak akan menghilangkan
+Mode Demo**. Yang menghilangkan Mode Demo hanya **mengisi koneksi**:
+
+1. Buat Spreadsheet + deploy backend (bagian 5.1 & 5.2 di atas).
+2. Buka aplikasi → **Pengaturan → Tab Umum** (masukkan kata sandi) →
+   isi **Spreadsheet ID** & **URL Web App** → **💾 Simpan**.
+3. Klik **🔌 Uji Koneksi** → status menjadi **Terhubung** → data dari
+   Spreadsheet langsung dimuat, Mode Demo hilang.
+4. Jika Anda sudah mengisi data saat Mode Demo, pakai tombol
+   **📤 Pindahkan Data Demo → Spreadsheet** di Dashboard untuk
+   menyalinnya ke Spreadsheet.
+5. Setting koneksi tersimpan **per perangkat**. Perangkat lain cukup
+   diisi sekali dengan Spreadsheet ID & URL yang sama, lalu semua
+   perangkat melihat data yang sama.
+
+> Tip: setelah upload versi baru ke GitHub Pages, buka aplikasi di HP
+> dan **tarik ke bawah** (pull-to-refresh) atau tutup-buka aplikasi
+> sekali, agar service worker memuat versi terbaru.
+
+---
+
 ## 6. Mengunggah ke GitHub Pages
 
 **Cara A — branch `gh-pages`:**

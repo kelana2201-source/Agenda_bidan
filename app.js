@@ -692,7 +692,13 @@ function renderDashboard() {
     <div class="small" style="opacity:.85;margin-top:10px">🔄 Terakhir sinkron: ${State.lastSync ? new Date(State.lastSync).toLocaleString('id-ID') : '—'} ${isDemoMode() ? '• Mode Demo (lokal)' : '• Spreadsheet'}</div>
   </div>
 
-  ${isDemoMode() ? '<div class="card mb-16" style="border-left:5px solid var(--amber);background:var(--amber-soft)"><div class="small"><b>⚠️ Mode Demo:</b> data tersimpan di perangkat ini saja — perubahan di HP lain/Spreadsheet tidak akan tampil. Hubungkan Google Spreadsheet di <b>Pengaturan → Koneksi Database</b>.</div></div>' : ''}
+  ${isDemoMode() ? `<div class="card mb-16" style="border-left:5px solid var(--amber);background:var(--amber-soft)">
+    <div class="small"><b>⚠️ Mode Demo aktif</b> — aplikasi belum terhubung Google Spreadsheet, jadi data hanya tersimpan di perangkat ini (ubah di HP lain tidak akan tampil).</div>
+    <div class="flex flex-wrap mt-8">
+      <button class="btn btn-primary btn-sm" data-action="go-koneksi">🔌 Hubungkan Database</button>
+      <button class="btn btn-soft btn-sm" data-action="migrate-demo">📤 Pindahkan Data Demo → Spreadsheet</button>
+    </div>
+  </div>` : ''}
 
   <div class="stat-grid">
     <div class="card stat-card"><div class="stat-ico" style="background:var(--primary-soft)">📋</div><div><div class="stat-val">${total}</div><div class="stat-lbl">Jumlah Agenda</div></div></div>
@@ -1888,6 +1894,9 @@ async function testKoneksi(btn) {
     toast('🔌 Terhubung! Mode: ' + (res.mode === 'demo' ? 'demo' : 'Spreadsheet'), 'success');
     $('#conn-status').className = 'conn-status ok';
     $('#conn-text').textContent = 'Terhubung';
+    // langsung muat data dari Spreadsheet agar mode demo langsung hilang
+    await syncAll({ silent: true });
+    toast('📡 Data dari Spreadsheet dimuat — Mode Demo selesai', 'success');
   } catch (err) {
     toast('🔌 Gagal: ' + err.message, 'error', 4500);
     $('#conn-status').className = 'conn-status no';
@@ -2181,6 +2190,36 @@ async function flushQueue() {
   if (ok) toast('📤 ' + ok + ' operasi offline berhasil dikirim', 'success');
 }
 
+/* Pindahkan data yang tersimpan di mode demo (perangkat) ke Spreadsheet */
+async function migrateDemoData() {
+  if (isDemoMode()) {
+    toast('Isi dulu koneksi database di Pengaturan → Umum, lalu coba lagi', 'warn');
+    _tabAktif = 'umum';
+    navigate('pengaturan');
+    return;
+  }
+  const nA = State.agenda.length, nP = State.piket.length, nM = State.master.length;
+  if (!nA && !nP) { toast('Tidak ada data demo untuk dipindahkan', 'info'); return; }
+  const ok = await confirmDialog(
+    'Pindahkan data dari perangkat ini ke Spreadsheet?<br><b>' + nA + ' agenda, ' + nP + ' piket, ' + nM + ' master</b> akan disalin ke Spreadsheet.',
+    { title: '📤 Pindahkan Data Demo', yesText: 'Ya, pindahkan' });
+  if (!ok) return;
+  setProgress(10);
+  let n = 0;
+  try {
+    for (const it of State.agenda) { await Store.saveAgenda(it); n++; }
+    for (const it of State.piket) { await Store.savePiket(it); n++; }
+    for (const it of State.master) { await Store.saveMaster(it); n++; }
+    setProgress(80);
+    await syncAll({ silent: true });
+    setProgress(100);
+    toast('✅ ' + n + ' data berhasil dipindahkan ke Spreadsheet', 'success');
+  } catch (err) {
+    setProgress(0);
+    toast('⚠️ Gagal memindahkan: ' + err.message, 'error', 4500);
+  }
+}
+
 /* Tarik ke bawah untuk menyinkronkan (pull-to-refresh) */
 function setupPullToRefresh() {
   const ind = $('#pull-indicator');
@@ -2359,6 +2398,8 @@ function handleClick(e) {
     case 'master-toggle': toggleMaster(id); break;
     case 'master-edit': openMasterForm(id); break;
     case 'master-del': deleteMaster(id); break;
+    case 'go-koneksi': _tabAktif = 'umum'; navigate('pengaturan'); break;
+    case 'migrate-demo': migrateDemoData(); break;
     case 'unlock-umum': requirePassword().then(ok => { if (ok) renderPengaturan(); }); break;
 
     case 'tab-set':
