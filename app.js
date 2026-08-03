@@ -691,7 +691,10 @@ function renderDashboard() {
   const belum = State.agenda.filter(a => ['Belum', 'Berlangsung'].includes(a.status)).length;
   const terlambat = State.agenda.filter(isLate).length;
   const piketHariIni = State.piket.filter(p => p.tanggal === tKey);
-  const nextPiket = sortAgenda(State.piket.map(p => ({ ...p, jamMulai: SHIFT_JAM(p.shift) }))).find(p => p.tanggal >= tKey && !(p.tanggal === tKey && (SHIFT_JAM(p.shift) || '') < nowHM()));
+  // "Piket Berikutnya" harus tanggal SETELAH hari ini — kalau ikut menyertakan
+  // piket hari ini yang belum mulai, kartu ini jadi duplikat "Jadwal Piket
+  // Hari Ini" di atasnya (itu penyebab tampil 2x "Shift Siang" yang sama).
+  const nextPiket = sortAgenda(State.piket.map(p => ({ ...p, jamMulai: SHIFT_JAM(p.shift) }))).find(p => p.tanggal > tKey);
   const info = shiftInfo(now);
 
   const foto = s.fotoProfil ? '<img class="avatar avatar-lg" src="' + s.fotoProfil + '" alt="Foto">' : '<div class="avatar avatar-lg" style="background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:30px">👩‍⚕️</div>';
