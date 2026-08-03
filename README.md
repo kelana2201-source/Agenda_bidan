@@ -10,14 +10,14 @@
 
 | Modul | Fitur |
 |---|---|
-| **🔑 Kata Sandi** | Masuk langsung **tanpa login**; kata sandi hanya diminta untuk aksi sensitif: membuka **Pengaturan** & mengubah **data master** (tambah/edit/hapus/aktif-nonaktif) + penghapusan agenda/piket. Tombol 🔒 untuk mengunci kembali. Default: `bidan123` |
+| **🔑 Kata Sandi** | Masuk langsung **tanpa login**. Kata sandi **hanya melindungi Pengaturan → Tab Umum** (profil, kata sandi, koneksi database). **Master Kegiatan & semua perubahan data bebas tanpa sandi** (data bersifat dinamis). Tombol 🔒 untuk mengunci kembali. Default: `bidan123` |
 | **🏠 Dashboard** | Sapaan, hari/tanggal, jam realtime, kalender mini, agenda hari ini & besok, piket hari ini & berikutnya, progress bulanan (ring), statistik agenda, timeline, grafik 7 hari, quick menu, notifikasi |
 | **📋 Agenda** | Card agenda (tanggal, hari, kegiatan, kategori, jam, lokasi, sasaran, keterangan, status, prioritas, foto, checklist), filter realtime (hari ini/besok/minggu/bulan, kategori, status), pencarian realtime, status: Belum/Berlangsung/Selesai/Ditunda/Dibatalkan + deteksi Terlambat otomatis |
 | **📅 Kalender** | Kalender bulanan interaktif, indikator warna per kategori, klik tanggal → agenda hari itu, tambah agenda langsung dari tanggal |
 | **🕐 Jadwal Piket** | Pengingat dinas pribadi, 3 shift (🟢 Pagi 07.30–14.00, 🟠 Siang 14.00–21.00, 🔵 Malam 21.00–07.30), kalender shift berwarna, card shift, timeline bulanan, **countdown menuju shift berikutnya**, filter shift, jam shift bisa diubah |
-| **🗂️ Master Kegiatan** | 18 kegiatan baku bidan sebagai data awal, tambah/edit/hapus/aktif-nonaktif, memilih master saat isi agenda → data terisi otomatis (lokasi, sasaran, durasi, keterangan) |
+| **🗂️ Master Kegiatan** | 18 kegiatan baku bidan sebagai data awal, tambah/edit/hapus/aktif-nonaktif, memilih master saat isi agenda → data terisi otomatis (lokasi, sasaran, durasi, keterangan). **Dikelola dari Pengaturan → Tab Master Data** (tidak ada menu terpisah) |
 | **📊 Laporan** | Statistik bulanan (kegiatan, selesai, terlambat, piket), grafik batang per hari, donut kategori & status, progress per kategori, tabel rincian, **export Excel (.xls), Cetak/PDF, Print** |
-| **⚙️ Pengaturan** | 6 tab: Umum (profil, logo, foto, tema light/dark/system, password), Koneksi Database (Spreadsheet ID, URL Web App, nama 5 sheet, uji koneksi, status), Telegram Bot (token, chat ID, tes kirim, 6 jenis notifikasi), Master Data, Master Shift, Sinkronisasi (sync, refresh, backup, restore, export/import JSON, bersihkan cache) |
+| **⚙️ Pengaturan** | 5 tab: **Umum** (profil, logo, foto, tema light/dark/system, password **+ Koneksi Database**: Spreadsheet ID, URL Web App, nama 5 sheet, uji koneksi, status — tab ini terkunci kata sandi), Telegram Bot, **Master Data** (bebas tanpa sandi), Master Shift, Sinkronisasi |
 | **📡 Offline** | Service worker (app shell), cache data sementara di localStorage, antrian operasi offline yang dikirim ulang saat online, pull-to-refresh, banner offline |
 | **🔔 Notifikasi** | Notifikasi browser (agenda dimulai, 1 jam/30 menit sebelum, shift mulai) + notifikasi Telegram otomatis |
 
@@ -61,8 +61,9 @@
 
 1. Unduh/clone folder ini, buka `index.html` di browser (atau jalankan server lokal: `python -m http.server 8000` lalu buka `http://localhost:8000`).
 2. Aplikasi **langsung masuk ke Dashboard tanpa login** — dalam **Mode Demo** data tersimpan sementara di browser.
-3. Kata sandi (default: **`bidan123`**) hanya diminta saat Anda membuka **Pengaturan** atau mengubah **data master** (tambah/edit/hapus/aktif-nonaktif) serta menghapus agenda/piket. Bisa dikunci kembali lewat tombol **🔒 Kunci Aplikasi**.
+3. Kata sandi (default: **`bidan123`**) hanya diminta saat membuka **Pengaturan → Tab Umum** (profil, kata sandi & koneksi database). **Master Kegiatan, agenda, dan piket bebas diubah tanpa sandi** — data bersifat dinamis. Bisa dikunci kembali lewat tombol **🔒 Kunci Aplikasi**.
 4. Jelajahi semua menu. Untuk pemakaian sungguhan, sambungkan Spreadsheet (bagian 5).
+5. **Sinkronisasi data:** tombol 🔄 di bilah atas, **tarik ke bawah (pull-to-refresh)**, atau otomatis saat aplikasi dibuka kembali. Status "Terakhir sinkron" tampil di Dashboard — jika masih **Mode Demo**, perubahan di HP lain/Spreadsheet tidak akan tampil sampai koneksi diatur.
 
 > ⚠️ Mode demo **bukan** database utama — hanya untuk mencoba. Setelah koneksi diatur, data tersimpan di Spreadsheet Anda.
 
@@ -85,7 +86,7 @@
 5. Klik **Deploy**, salin **Web app URL** (berakhiran `/exec`).
 
 ### 5.3 Hubungkan aplikasi
-1. Buka aplikasi → **Pengaturan → Tab "Koneksi Database"**.
+1. Buka aplikasi → **Pengaturan → Tab "Umum" → Koneksi Database** (tab Umum terkunci kata sandi; buka dengan kata sandi Anda).
 2. Isi **Spreadsheet ID** dan **URL Web App**, atur nama sheet bila perlu (default sesuai spesifikasi).
 3. Klik **💾 Simpan**, lalu **🔌 Uji Koneksi** → status harus **"Terhubung"**.
 4. Klik **Sinkronkan** — data dari Spreadsheet akan dimuat.
@@ -497,8 +498,8 @@ var SS_ID = '';
 
 ## 10. Catatan Keamanan & Batasan
 
-- **Aplikasi terbuka langsung tanpa login.** Kata sandi (disimpan di sheet *Pengaturan*, baris `password`) hanya diminta untuk aksi sensitif: membuka Pengaturan, mengubah data master, dan menghapus agenda/piket. **Segera ganti dari nilai default** `bidan123` lewat Pengaturan → Umum.
-- Kata sandi hanya dikirim ke server saat aksi sensitif tersebut dijalankan; aksi harian (simpan agenda/piket) tidak mengirim kata sandi.
+- **Aplikasi terbuka langsung tanpa login.** Kata sandi (disimpan di sheet *Pengaturan*, baris `password`) **hanya melindungi Pengaturan → Tab Umum** (profil, kata sandi & koneksi database). Semua perubahan data (agenda, piket, master kegiatan) bebas tanpa sandi. **Segera ganti dari nilai default** `bidan123` lewat Pengaturan → Umum.
+- Kata sandi hanya dikirim ke server saat menyimpan perubahan dari tab Umum; aksi harian (simpan agenda/piket/master) tidak mengirim kata sandi.
 - Tombol **🔒 Kunci Aplikasi** di sidebar / menu Lainnya untuk mengunci kembali sesi (kata sandi tidak disimpan permanen di perangkat).
 - Saat *deploy* Web App, pilih **"Execute as: Me"** agar hanya akun Anda yang punya akses tulis ke Spreadsheet.
 - **Foto agenda** disimpan sebagai *data URL* di sel Spreadsheet (dikompres otomatis ~≤900px). Untuk kapasitas besar, sebaiknya upload foto ke Google Drive/Photos dan tempel URL-nya di keterangan.

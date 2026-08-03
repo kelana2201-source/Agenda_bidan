@@ -2,13 +2,14 @@
    AGENDA & MANAJEMEN KEGIATAN BIDAN — service worker
    Strategi:
    - Shell aplikasi (HTML/CSS/JS/ikon) di-cache saat install.
-   - Navigasi: network-first, fallback ke index.html (offline).
-   - Aset statis: cache-first.
-   - Request API (Google Apps Script) TIDAK di-cache —
-     data aplikasi dikelola lewat cache localStorage + antrian offline.
+   - Navigasi + file inti (index.html, app.js, style.css):
+     NETWORK-FIRST → setiap refresh mengambil versi terbaru,
+     fallback ke cache bila offline (agar update langsung tampil).
+   - Aset lain (ikon, manifest): cache-first.
+   - Request API (Google Apps Script) TIDAK di-cache.
    ============================================================ */
 
-const CACHE_NAME = 'agenda-bidan-v1';
+const CACHE_NAME = 'agenda-bidan-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -46,21 +47,25 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // GAS API & Telegram lewat langsung
 
-  // Navigasi halaman: network-first, fallback offline ke index.html
-  if (req.mode === 'navigate') {
+  const isCore = req.mode === 'navigate' || /\.(js|css)$/.test(url.pathname);
+
+  // Navigasi + JS/CSS: network-first (selalu ambil versi terbaru saat online)
+  if (isCore) {
     event.respondWith(
       fetch(req)
         .then((res) => {
           const copy = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put('./index.html', copy));
+          caches.open(CACHE_NAME).then((c) => c.put(req, copy));
           return res;
         })
-        .catch(() => caches.match('./index.html'))
+        .catch(() =>
+          caches.match(req).then((hit) => hit || caches.match('./index.html'))
+        )
     );
     return;
   }
 
-  // Aset statis: cache-first
+  // Aset statis lain (ikon, manifest): cache-first
   event.respondWith(
     caches.match(req).then((hit) => {
       if (hit) return hit;

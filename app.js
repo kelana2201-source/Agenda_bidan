@@ -210,6 +210,7 @@ const State = {
   piketFilter: 'all',
   masterFilter: { q: '', cat: '', aktif: 'all' },
   editAgendaId: null,
+  lastSync: 0,            // stempel waktu sinkronisasi terakhir
   editMasterId: null,
   detailAgendaId: null,
   checklistDraft: [],
@@ -345,24 +346,17 @@ const Store = {
 
 /* ============================================================
    5. KUNCI & KATA SANDI
-   Aplikasi langsung terbuka TANPA login. Kata sandi hanya
-   diminta untuk aksi sensitif: membuka menu Pengaturan dan
-   mengubah data master (tambah/edit/hapus/aktif-nonaktif),
-   serta penghapusan agenda/piket.
+   Aplikasi terbuka langsung TANPA login. Kata sandi hanya
+   melindungi tab Pengaturan → Umum (profil, kata sandi, dan
+   koneksi database) — hal yang tidak boleh sembarangan diubah.
+   Perubahan DATA (agenda, piket, master kegiatan) TIDAK
+   memerlukan kata sandi karena bersifat dinamis.
    ============================================================ */
-
-/* Aksi yang dilindungi kata sandi */
-const SENSITIVE_VIEW = 'pengaturan';
-const SENSITIVE_ACTIONS = new Set([
-  'go-master-form', 'master-edit', 'master-toggle', 'master-del',
-  'agenda-del', 'piket-del',
-]);
 
 /* Minta kata sandi (modal). Menyelesaikan dengan true bila benar. */
 function requirePassword() {
   return new Promise(resolve => {
     if (State.unlocked) { resolve(true); return; }
-    const masihDefault = State.settings.password === 'bidan123';
     openModal(`
       <form id="form-unlock">
         <div class="field">
@@ -373,7 +367,6 @@ function requirePassword() {
             <button type="button" class="input-btn" data-action="unlock-toggle">👁️</button>
           </div>
         </div>
-        ${masihDefault ? '<p class="small muted">Kata sandi default: <b>bidan123</b> — ganti di Pengaturan → Umum</p>' : ''}
         <p class="login-error hidden" id="unlock-error"></p>
         <div class="modal-foot">
           <button type="button" class="btn btn-soft" data-action="modal-close">Batal</button>
@@ -407,7 +400,7 @@ function lockApp() {
   State.unlocked = false;
   State._pwd = '';
   closeMore(); closeFab(); closeModal();
-  if (State.currentView === SENSITIVE_VIEW) navigate('dashboard');
+  if (State.currentView === 'pengaturan') navigate('dashboard');
   toast('🔒 Aplikasi dikunci', 'info');
 }
 
@@ -433,7 +426,7 @@ function toggleThemeQuick() {
   State.settings.tema = t === 'dark' ? 'light' : 'dark';
   applyTheme();
   const sel = $('#set-tema');
-  if (sel) sel.value = State.settings.tema;
+  if (sel) { if (sel.dataset && sel.dataset.ddId) DD.set('set-tema', State.settings.tema); else sel.value = State.settings.tema; }
   toast('Tema: ' + (State.settings.tema === 'dark' ? 'Gelap 🌙' : 'Terang ☀️'), 'info');
 }
 
@@ -477,6 +470,49 @@ function skeletonCards(n) {
 }
 function emptyState(icon, title, sub) {
   return '<div class="empty"><div class="e-ico">' + icon + '</div><h4>' + title + '</h4><p>' + sub + '</p></div>';
+}
+
+/* ---------- Dropdown Kustom ----------
+   Mengganti <select> bawaan agar tampilan modern & konsisten
+   (bukan dialog hitam bawaan Android). Nilai tersimpan di
+   data-dd-val; perubahan memicu event 'change' yang ber-gelembung. */
+const DD = {
+  meta: {}, // id -> array opsi (dengan data tambahan utk autofill)
+  render(id, options, cur, placeholder) {
+    const opts = options.map(o => (typeof o === 'string') ? { v: o, l: o } : o);
+    DD.meta[id] = opts;
+    const sel = opts.find(o => o.v === cur) || null;
+    return `
+    <div class="dd" id="${id}" data-dd data-dd-id="${id}" data-dd-val="${escapeHtml(sel ? sel.v : '')}">
+      <button type="button" class="dd-btn" data-dd-toggle>
+        <span class="dd-val">${sel ? escapeHtml(sel.l) : escapeHtml(placeholder || 'Pilih…')}</span>
+        <span class="dd-caret">▾</span>
+      </button>
+      <div class="dd-panel hidden" data-dd-panel>
+        ${opts.map(o => '<button type="button" class="dd-opt ' + (o.v === cur ? 'sel' : '') + '" data-dd-opt="' + escapeHtml(o.v) + '">' + escapeHtml(o.l) + '<span class="dd-check">✓</span></button>').join('')}
+      </div>
+    </div>`;
+  },
+  val(id) {
+    const el = document.querySelector('[data-dd-id="' + id + '"]');
+    return el ? el.dataset.ddVal : '';
+  },
+  set(id, v) {
+    const el = document.querySelector('[data-dd-id="' + id + '"]');
+    if (!el) return;
+    el.dataset.ddVal = v;
+    const meta = (DD.meta[id] || []).find(o => o.v === v);
+    const lbl = el.querySelector('.dd-val');
+    if (lbl) lbl.textContent = meta ? meta.l : v;
+    el.querySelectorAll('.dd-opt').forEach(o => o.classList.toggle('sel', o.dataset.ddOpt === v));
+  },
+};
+function closeAllDD() {
+  document.querySelectorAll('.dd.open').forEach(d => {
+    d.classList.remove('open');
+    const p = d.querySelector('[data-dd-panel]');
+    if (p) p.classList.add('hidden');
+  });
 }
 
 let _progressEl = null;
@@ -597,7 +633,6 @@ const VIEWS = {
   agenda: { render: renderAgenda, sub: () => 'Daftar kegiatan' },
   kalender: { render: renderKalender, sub: () => bulanTahun(new Date(State.calendar.y, State.calendar.m, 1)) },
   piket: { render: renderPiket, sub: () => bulanTahun(new Date(State.piketCal.y, State.piketCal.m, 1)) },
-  master: { render: renderMaster, sub: () => State.master.length + ' kegiatan baku' },
   laporan: { render: renderLaporan, sub: () => 'Rekap ' + State.laporanMonth.replace('-', ' ') },
   pengaturan: { render: renderPengaturan, sub: () => 'Konfigurasi aplikasi' },
   tentang: { render: renderTentang, sub: () => 'v' + APP.versi },
@@ -605,11 +640,6 @@ const VIEWS = {
 
 function navigate(view, silent) {
   if (!VIEWS[view]) view = 'dashboard';
-  // Menu Pengaturan dilindungi kata sandi
-  if (view === SENSITIVE_VIEW && !State.unlocked) {
-    requirePassword().then(ok => { if (ok) navigate(view, silent); });
-    return;
-  }
   State.currentView = view;
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = $('#view-' + view);
@@ -659,7 +689,10 @@ function renderDashboard() {
       <div class="hero-date">${fmtTanggalPanjang(tKey)}</div>
       ${foto}
     </div>
+    <div class="small" style="opacity:.85;margin-top:10px">🔄 Terakhir sinkron: ${State.lastSync ? new Date(State.lastSync).toLocaleString('id-ID') : '—'} ${isDemoMode() ? '• Mode Demo (lokal)' : '• Spreadsheet'}</div>
   </div>
+
+  ${isDemoMode() ? '<div class="card mb-16" style="border-left:5px solid var(--amber);background:var(--amber-soft)"><div class="small"><b>⚠️ Mode Demo:</b> data tersimpan di perangkat ini saja — perubahan di HP lain/Spreadsheet tidak akan tampil. Hubungkan Google Spreadsheet di <b>Pengaturan → Koneksi Database</b>.</div></div>' : ''}
 
   <div class="stat-grid">
     <div class="card stat-card"><div class="stat-ico" style="background:var(--primary-soft)">📋</div><div><div class="stat-val">${total}</div><div class="stat-lbl">Jumlah Agenda</div></div></div>
@@ -726,8 +759,8 @@ function renderDashboard() {
       <div class="quick-grid">
         <button class="quick-item" data-action="go-agenda-form"><span>📋</span>Tambah Agenda</button>
         <button class="quick-item" data-action="go-piket-add"><span>🕐</span>Tambah Piket</button>
-        <button class="quick-item" data-action="go-master-form"><span>🗂️</span>Tambah Master</button>
         <button class="quick-item" data-action="go-laporan"><span>📊</span>Laporan</button>
+        <button class="quick-item" data-action="toggle-theme"><span>🎨</span>Ganti Tema</button>
       </div>
     </div>
   </div>`;
@@ -826,14 +859,8 @@ function renderAgenda() {
     </div>
     <div class="search-box"><span class="s-ico">🔍</span><input class="input" id="agenda-search" placeholder="Cari kegiatan, lokasi, keterangan…" value="${escapeHtml(f.q)}"></div>
     <div class="filter-selects">
-      <select class="input" id="agenda-cat">
-        <option value="">Semua Kategori</option>
-        ${Object.keys(KATEGORI).map(k => '<option ' + (f.cat === k ? 'selected' : '') + '>' + k + '</option>').join('')}
-      </select>
-      <select class="input" id="agenda-status">
-        <option value="">Semua Status</option>
-        ${STATUS_LIST.map(s => '<option ' + (f.status === s ? 'selected' : '') + '>' + s + '</option>').join('')}
-      </select>
+      ${DD.render('agenda-cat', [{ v: '', l: 'Semua Kategori' }].concat(Object.keys(KATEGORI)), f.cat)}
+      ${DD.render('agenda-status', [{ v: '', l: 'Semua Status' }].concat(STATUS_LIST), f.status)}
     </div>
   </div>
   <div id="agenda-list">${skeletonCards(4)}</div>`;
@@ -924,23 +951,21 @@ function openAgendaForm(id) {
       <div class="field"><label>Tanggal *</label><input type="date" class="input" id="a-tanggal" required value="${a ? a.tanggal : today}"></div>
       <div class="field"><label>Hari (otomatis)</label><input type="text" class="input" id="a-hari" readonly value="${a ? namaHari(a.tanggal) : namaHari(today)}" style="background:var(--gray-soft)"></div>
       <div class="field full"><label>Master Kegiatan (isi otomatis)</label>
-        <select class="input" id="a-master"><option value="">— Pilih Master Kegiatan —</option>
-        ${aktif.map(m => '<option value="' + m.id + '" data-nama="' + escapeHtml(m.nama) + '" data-kat="' + escapeHtml(m.kategori) + '" data-lok="' + escapeHtml(m.lokasiDefault) + '" data-sas="' + escapeHtml(m.sasaranDefault) + '" data-dur="' + (m.durasiDefault || 0) + '" data-ket="' + escapeHtml(m.keteranganDefault) + '">' + m.ikon + ' ' + escapeHtml(m.nama) + '</option>').join('')}
-        </select>
+        ${DD.render('a-master', [{ v: '', l: '— Pilih Master Kegiatan —' }].concat(aktif.map(m => ({ v: m.id, l: m.ikon + ' ' + m.nama, nama: m.nama, kat: m.kategori, lok: m.lokasiDefault, sas: m.sasaranDefault, dur: m.durasiDefault, ket: m.keteranganDefault }))), '', '— Pilih Master Kegiatan —')}
       </div>
       <div class="field full"><label>Nama Kegiatan *</label><input class="input" id="a-nama" required placeholder="cth: Posyandu Balita" value="${opt}"></div>
       <div class="field"><label>Kategori *</label>
-        <select class="input" id="a-kategori">${Object.keys(KATEGORI).map(k => '<option ' + ((a && a.kategori === k) ? 'selected' : '') + '>' + k + '</option>').join('')}</select>
+        ${DD.render('a-kategori', Object.keys(KATEGORI), (a && a.kategori) || 'Pelayanan Kesehatan')}
       </div>
       <div class="field"><label>Prioritas</label>
-        <select class="input" id="a-prioritas">${PRIORITAS_LIST.map(p => '<option ' + ((a && a.prioritas === p) || (!a && p === 'Sedang') ? 'selected' : '') + '>' + p + '</option>').join('')}</select>
+        ${DD.render('a-prioritas', PRIORITAS_LIST, (a && a.prioritas) || 'Sedang')}
       </div>
       <div class="field"><label>Jam Mulai</label><input type="time" class="input" id="a-jam1" value="${a ? a.jamMulai : '08:00'}"></div>
       <div class="field"><label>Jam Selesai</label><input type="time" class="input" id="a-jam2" value="${a ? a.jamSelesai : ''}"></div>
       <div class="field full"><label>Lokasi</label><input class="input" id="a-lokasi" placeholder="cth: Balai Desa" value="${a ? escapeHtml(a.lokasi) : ''}"></div>
       <div class="field"><label>Sasaran</label><input class="input" id="a-sasaran" placeholder="cth: Ibu hamil" value="${a ? escapeHtml(a.sasaran) : ''}"></div>
       <div class="field"><label>Status</label>
-        <select class="input" id="a-status">${STATUS_LIST.map(s => '<option ' + ((a && a.status === s) || (!a && s === 'Belum') ? 'selected' : '') + '>' + s + '</option>').join('')}</select>
+        ${DD.render('a-status', STATUS_LIST, (a && a.status) || 'Belum')}
       </div>
       <div class="field full"><label>Keterangan</label><textarea class="input" id="a-ket" placeholder="Catatan kegiatan…">${a ? escapeHtml(a.keterangan) : ''}</textarea></div>
 
@@ -970,15 +995,16 @@ function openAgendaForm(id) {
   if (a) State.checklistDraft = parseList(a.checklist);
   renderChecklistDraft();
 
-  $('#a-master').addEventListener('change', e => {
-    const o = e.target.selectedOptions[0];
-    if (!o || !o.value) return;
-    $('#a-nama').value = o.dataset.nama;
-    $('#a-kategori').value = o.dataset.kat;
-    $('#a-lokasi').value = o.dataset.lok;
-    $('#a-sasaran').value = o.dataset.sas;
-    $('#a-ket').value = o.dataset.ket;
-    const dur = parseInt(o.dataset.dur || '0', 10);
+  $('#a-master').addEventListener('change', () => {
+    const meta = DD.meta['a-master'] || [];
+    const o = meta.find(x => x.v === DD.val('a-master'));
+    if (!o || !o.nama) return;
+    $('#a-nama').value = o.nama;
+    DD.set('a-kategori', o.kat);
+    $('#a-lokasi').value = o.lok || '';
+    $('#a-sasaran').value = o.sas || '';
+    $('#a-ket').value = o.ket || '';
+    const dur = parseInt(o.dur || '0', 10);
     if (dur && $('#a-jam1').value) $('#a-jam2').value = fromMin(toMin($('#a-jam1').value) + dur);
   });
   $('#a-tanggal').addEventListener('change', e => { $('#a-hari').value = namaHari(e.target.value); });
@@ -1015,14 +1041,14 @@ async function saveAgendaForm(e) {
     tanggal: $('#a-tanggal').value,
     hari: namaHari($('#a-tanggal').value),
     namaKegiatan: $('#a-nama').value.trim(),
-    kategori: $('#a-kategori').value,
+    kategori: DD.val('a-kategori'),
     jamMulai: $('#a-jam1').value || '',
     jamSelesai: $('#a-jam2').value || '',
     lokasi: $('#a-lokasi').value.trim(),
     sasaran: $('#a-sasaran').value.trim(),
     keterangan: $('#a-ket').value.trim(),
-    status: $('#a-status').value,
-    prioritas: $('#a-prioritas').value,
+    status: DD.val('a-status'),
+    prioritas: DD.val('a-prioritas'),
     foto: State._fotoDraft !== undefined ? State._fotoDraft : (State.agenda.find(x => x.id === id) || {}).foto || '',
     checklist: JSON.stringify(State.checklistDraft),
     updatedAt: new Date().toISOString(),
@@ -1358,9 +1384,7 @@ function openPiketModal(tanggal) {
     <form id="form-piket">
       <div class="field"><label>Tanggal</label><input type="date" class="input" id="p-tanggal" value="${tanggal || todayKey()}"></div>
       <div class="field"><label>Shift</label>
-        <select class="input" id="p-shift">
-          ${['Pagi', 'Siang', 'Malam'].map(s => '<option ' + (existing && existing.shift === s ? 'selected' : '') + '>' + s + '</option>').join('')}
-        </select>
+        ${DD.render('p-shift', ['Pagi', 'Siang', 'Malam'], (existing && existing.shift) || 'Pagi')}
       </div>
       <div class="field"><label>Catatan</label><input class="input" id="p-catatan" placeholder="cth: Jaga malam" value="${existing ? escapeHtml(existing.catatan || '') : ''}"></div>
       <div class="modal-foot">
@@ -1374,7 +1398,7 @@ function openPiketModal(tanggal) {
 async function savePiketForm(e) {
   e.preventDefault();
   const tgl = $('#p-tanggal').value;
-  const shift = $('#p-shift').value;
+  const shift = DD.val('p-shift');
   const catatan = $('#p-catatan').value.trim();
   if (!tgl) { toast('Tanggal wajib diisi', 'error'); return; }
   const existing = State.piket.find(p => p.tanggal === tgl);
@@ -1421,28 +1445,8 @@ async function deletePiket(tgl) {
    14. VIEW: MASTER KEGIATAN
    ============================================================ */
 
-function renderMaster() {
-  const el = $('#view-master');
-  const f = State.masterFilter;
-  el.innerHTML = `
-  <div class="filter-bar">
-    <div class="search-box"><span class="s-ico">🔍</span><input class="input" id="master-search" placeholder="Cari master kegiatan…" value="${escapeHtml(f.q)}"></div>
-    <div class="filter-selects">
-      <select class="input" id="master-cat">
-        <option value="">Semua Kategori</option>
-        ${Object.keys(KATEGORI).map(k => '<option ' + (f.cat === k ? 'selected' : '') + '>' + k + '</option>').join('')}
-      </select>
-      <select class="input" id="master-aktif">
-        <option value="all" ${f.aktif === 'all' ? 'selected' : ''}>Semua Status</option>
-        <option value="aktif" ${f.aktif === 'aktif' ? 'selected' : ''}>Aktif</option>
-        <option value="nonaktif" ${f.aktif === 'nonaktif' ? 'selected' : ''}>Nonaktif</option>
-      </select>
-    </div>
-  </div>
-  <div id="master-list"></div>`;
-  renderMasterList($('#master-list'));
-}
-
+/* Master Kegiatan dikelola dari Pengaturan → Tab Master Data.
+   renderMasterList() dipakai di tab tersebut (compact). */
 function getFilteredMaster() {
   const f = State.masterFilter;
   let list = State.master.slice();
@@ -1484,7 +1488,7 @@ function openMasterForm(id) {
     <div class="form-grid">
       <div class="field full"><label>Nama Kegiatan *</label><input class="input" id="m-nama" required value="${m ? escapeHtml(m.nama) : ''}" placeholder="cth: Posyandu Balita"></div>
       <div class="field"><label>Kategori</label>
-        <select class="input" id="m-kategori">${Object.keys(KATEGORI).map(k => '<option ' + (m && m.kategori === k ? 'selected' : '') + '>' + k + '</option>').join('')}</select>
+        ${DD.render('m-kategori', Object.keys(KATEGORI), (m && m.kategori) || 'Pelayanan Kesehatan')}
       </div>
       <div class="field"><label>Ikon (emoji)</label><input class="input" id="m-ikon" value="${m ? escapeHtml(m.ikon) : '📋'}" placeholder="cth: 👶"></div>
       <div class="field full"><label>Warna</label><input type="color" class="input" id="m-warna" value="${m ? m.warna : '#14B8A6'}" style="height:46px;padding:6px"></div>
@@ -1507,7 +1511,7 @@ async function saveMasterForm(e) {
   const item = {
     id,
     nama: $('#m-nama').value.trim(),
-    kategori: $('#m-kategori').value,
+    kategori: DD.val('m-kategori'),
     ikon: $('#m-ikon').value.trim() || '📋',
     warna: $('#m-warna').value || '#14B8A6',
     lokasiDefault: $('#m-lokasi').value.trim(),
@@ -1718,10 +1722,19 @@ function renderPengaturan() {
   const s = State.settings;
   el.innerHTML = `
   <div class="tab-bar">
-    ${['umum', 'database', 'telegram', 'master', 'shift', 'sync'].map((t, i) => '<button class="tab-btn ' + (_tabAktif === t ? 'active' : '') + '" data-action="tab-set" data-val="' + t + '">' + ['👤 Umum', '🗄️ Database', '🤖 Telegram', '🗂️ Master Data', '🕐 Shift', '🔄 Sinkronisasi'][i] + '</button>').join('')}
+    ${[['umum', '👤 Umum'], ['telegram', '🤖 Telegram'], ['master', '🗂️ Master Data'], ['shift', '🕐 Shift'], ['sync', '🔄 Sinkronisasi']]
+      .map(t => '<button class="tab-btn ' + (_tabAktif === t[0] ? 'active' : '') + '" data-action="tab-set" data-val="' + t[0] + '">' + t[1] + '</button>').join('')}
   </div>
 
   <div class="tab-pane ${_tabAktif === 'umum' ? 'active' : ''}" id="tab-umum">
+    ${!State.unlocked ? `
+    <div class="card" style="text-align:center;padding:28px 20px">
+      <div style="font-size:42px;margin-bottom:8px">🔒</div>
+      <h4 class="mb-8">Pengaturan Umum Terkunci</h4>
+      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Profil, kata sandi, dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Tab lain (Telegram, Master Data, Shift, Sinkronisasi) bebas diakses tanpa kata sandi.</p>
+      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
+    </div>
+    ` : `
     <div class="card mb-16">
       <div class="card-title">👤 Profil Bidan</div>
       <div class="form-grid">
@@ -1730,11 +1743,7 @@ function renderPengaturan() {
         <div class="field"><label>Nama Desa</label><input class="input" id="u-desa" value="${escapeHtml(s.namaDesa)}"></div>
         <div class="field"><label>Kata Sandi Login</label><input class="input" id="u-password" value="${escapeHtml(s.password)}"></div>
         <div class="field"><label>Tema</label>
-          <select class="input" id="set-tema">
-            <option value="light" ${s.tema === 'light' ? 'selected' : ''}>Terang ☀️</option>
-            <option value="dark" ${s.tema === 'dark' ? 'selected' : ''}>Gelap 🌙</option>
-            <option value="system" ${s.tema === 'system' ? 'selected' : ''}>Ikuti Sistem</option>
-          </select>
+          ${DD.render('set-tema', [{ v: 'light', l: 'Terang ☀️' }, { v: 'dark', l: 'Gelap 🌙' }, { v: 'system', l: 'Ikuti Sistem' }], s.tema)}
         </div>
       </div>
       <div class="form-grid">
@@ -1747,9 +1756,7 @@ function renderPengaturan() {
       </div>
       <button class="btn btn-primary mt-8" data-action="save-umum">💾 Simpan Pengaturan Umum</button>
     </div>
-  </div>
 
-  <div class="tab-pane ${_tabAktif === 'database' ? 'active' : ''}" id="tab-database">
     <div class="card mb-16">
       <div class="card-title">🗄️ Koneksi Google Spreadsheet <span class="grow"></span><span class="conn-status ${s.gasUrl ? 'ok' : 'no'}" id="conn-status"><span class="dot"></span><span id="conn-text">${s.gasUrl ? 'Terhubung' : 'Tidak Terhubung'}</span></span></div>
       <div class="field"><label>Spreadsheet ID</label><input class="input" id="d-spreadsheet" value="${escapeHtml(s.spreadsheetId)}" placeholder="1AbCdEfGh... (dari URL Spreadsheet)"></div>
@@ -1764,6 +1771,7 @@ function renderPengaturan() {
         <button class="btn btn-soft" data-action="db-reset">🗑️ Reset (hapus cache lokal)</button>
       </div>
     </div>
+    `}
   </div>
 
   <div class="tab-pane ${_tabAktif === 'telegram' ? 'active' : ''}" id="tab-telegram">
@@ -1823,7 +1831,6 @@ function renderPengaturan() {
   </div>`;
 
   // event khusus tab
-  $('#set-tema').addEventListener('change', e => { State.settings.tema = e.target.value; applyTheme(); });
   $$('.shift-time').forEach(inp => inp.addEventListener('change', () => { /* disimpan lewat tombol */ }));
   const ms2 = $('#master-search-2');
   if (ms2) ms2.addEventListener('input', debounce(e => { State.masterFilter.q = e.target.value; renderMasterList($('#master-list-compact'), true); }, 250));
@@ -2126,6 +2133,7 @@ async function syncAll(opts = {}) {
     State.master = d.master || [];
     State.log = d.log || [];
     cacheData();
+    State.lastSync = Date.now();
     lsSet(K.s_syncts, new Date().toLocaleString('id-ID'));
     State.offline = false;
     $('#offline-banner').classList.add('hidden');
@@ -2173,31 +2181,35 @@ async function flushQueue() {
   if (ok) toast('📤 ' + ok + ' operasi offline berhasil dikirim', 'success');
 }
 
+/* Tarik ke bawah untuk menyinkronkan (pull-to-refresh) */
 function setupPullToRefresh() {
-  const main = $('#main');
   const ind = $('#pull-indicator');
-  let startY = 0, pulling = false;
+  let startY = 0, pulling = false, armed = false;
   window.addEventListener('touchstart', e => {
-    if (window.scrollY <= 0 && State.currentView) { startY = e.touches[0].clientY; pulling = true; }
+    if (window.scrollY <= 0) { startY = e.touches[0].clientY; pulling = true; armed = false; }
   }, { passive: true });
   window.addEventListener('touchmove', e => {
-    if (!pulling) return;
+    if (!pulling || window.scrollY > 0) return;
     const dy = e.touches[0].clientY - startY;
-    if (window.scrollY <= 0 && dy > 0) {
-      if (dy > 90) $('#pull-text').textContent = 'Lepaskan untuk sinkron';
-      else $('#pull-text').textContent = 'Tarik untuk sinkron';
+    if (dy > 0) {
+      armed = dy > 80;
       ind.classList.add('show');
-      ind.style.transform = 'scale(' + Math.min(1, dy / 90) + ')';
+      ind.style.height = Math.min(64, dy * 0.55) + 'px';
+      $('#pull-text').textContent = armed ? 'Lepaskan untuk sinkron' : 'Tarik untuk sinkron';
     }
   }, { passive: true });
   window.addEventListener('touchend', () => {
+    if (!pulling) return;
     pulling = false;
     ind.classList.remove('show');
-    ind.style.transform = '';
-    $('#pull-text').textContent = 'Tarik untuk sinkron';
-    // trigger sync jika ditarik cukup jauh — disederhanakan: selalu tawarkan tombol
+    ind.style.height = '';
+    if (armed) {
+      $('#pull-text').textContent = 'Menyinkronkan…';
+      syncAll({ silent: false });
+    } else {
+      $('#pull-text').textContent = 'Tarik untuk sinkron';
+    }
   });
-  // Refresh manual lewat tombol sinkron di topbar
 }
 
 /* ============================================================
@@ -2239,6 +2251,9 @@ function closeFab() { $('#fab-menu').classList.add('hidden'); $('#fab').classLis
 
 /* Delegasi klik global */
 function handleClick(e) {
+  // Tutup panel dropdown bila klik di luar
+  if (!e.target.closest('[data-dd]')) closeAllDD();
+
   const navEl = e.target.closest('[data-nav]');
   if (navEl) { e.preventDefault(); navigate(navEl.dataset.nav); return; }
 
@@ -2249,6 +2264,29 @@ function handleClick(e) {
   const val = el.dataset.val;
 
   switch (act) {
+    /* Dropdown kustom */
+    case 'dd-toggle': {
+      const dd = el.closest('[data-dd]');
+      if (!dd) break;
+      const panel = dd.querySelector('[data-dd-panel]');
+      const wasOpen = !panel.classList.contains('hidden');
+      closeAllDD();
+      if (!wasOpen) { panel.classList.remove('hidden'); dd.classList.add('open'); }
+      break;
+    }
+    case 'dd-opt': {
+      const dd = el.closest('[data-dd]');
+      if (!dd) break;
+      const did = dd.dataset.ddId;
+      dd.dataset.ddVal = el.dataset.ddOpt;
+      const meta = (DD.meta[did] || []).find(o => o.v === el.dataset.ddOpt);
+      const lbl = dd.querySelector('.dd-val');
+      if (lbl) lbl.textContent = meta ? meta.l : el.dataset.ddOpt;
+      dd.querySelectorAll('.dd-opt').forEach(o => o.classList.toggle('sel', o === el));
+      closeAllDD();
+      dd.dispatchEvent(new Event('change', { bubbles: true }));
+      break;
+    }
     case 'unlock-toggle': {
       const inp = $('#u-pass');
       if (inp) {
@@ -2271,12 +2309,12 @@ function handleClick(e) {
     case 'go-agenda': navigate('agenda'); break;
     case 'go-laporan': navigate('laporan'); break;
     case 'go-piket-add': closeFab(); openPiketModal(todayKey()); break;
-    case 'go-master-form': closeFab(); requirePassword().then(ok => { if (ok) openMasterForm(null); }); break;
+    case 'go-master-form': closeFab(); openMasterForm(null); break;
 
     case 'agenda-range': State.agendaFilter.range = val; renderAgenda(); break;
     case 'agenda-detail': openAgendaDetail(id); break;
     case 'agenda-edit': closeModal(); openAgendaForm(id); break;
-    case 'agenda-del': requirePassword().then(ok => { if (ok) { closeModal(); deleteAgenda(id); } }); break;
+    case 'agenda-del': closeModal(); deleteAgenda(id); break;
     case 'status-set': setAgendaStatus(id, val); break;
     case 'ck-toggle': toggleChecklist(id, +val); break;
     case 'ck-del': State.checklistDraft.splice(+val, 1); renderChecklistDraft(); break;
@@ -2316,13 +2354,18 @@ function handleClick(e) {
     case 'piket-day': openPiketModal(val); break;
     case 'piket-prev': State.piketCal.m--; if (State.piketCal.m < 0) { State.piketCal.m = 11; State.piketCal.y--; } renderPiket(); break;
     case 'piket-next': State.piketCal.m++; if (State.piketCal.m > 11) { State.piketCal.m = 0; State.piketCal.y++; } renderPiket(); break;
-    case 'piket-del': requirePassword().then(ok => { if (ok) { closeModal(); deletePiket(val); } }); break;
+    case 'piket-del': closeModal(); deletePiket(val); break;
 
-    case 'master-toggle': requirePassword().then(ok => { if (ok) toggleMaster(id); }); break;
-    case 'master-edit': requirePassword().then(ok => { if (ok) openMasterForm(id); }); break;
-    case 'master-del': requirePassword().then(ok => { if (ok) deleteMaster(id); }); break;
+    case 'master-toggle': toggleMaster(id); break;
+    case 'master-edit': openMasterForm(id); break;
+    case 'master-del': deleteMaster(id); break;
+    case 'unlock-umum': requirePassword().then(ok => { if (ok) renderPengaturan(); }); break;
 
-    case 'tab-set': _tabAktif = val; renderPengaturan(); break;
+    case 'tab-set':
+      if (val === 'umum' && !State.unlocked) {
+        requirePassword().then(ok => { if (ok) { _tabAktif = 'umum'; renderPengaturan(); } });
+      } else { _tabAktif = val; renderPengaturan(); }
+      break;
     case 'save-umum': savePengaturanUmum(); break;
     case 'save-db': saveKoneksiDb(); break;
     case 'conn-test': testKoneksi(el); break;
@@ -2344,16 +2387,18 @@ function handleClick(e) {
   }
 }
 
-/* Delegasi perubahan (select, checkbox, input) */
+/* Delegasi perubahan (dropdown kustom, checkbox, input) */
 function handleChange(e) {
   const t = e.target;
-  if (t.id === 'agenda-cat') { State.agendaFilter.cat = t.value; renderAgendaList(); }
-  else if (t.id === 'agenda-status') { State.agendaFilter.status = t.value; renderAgendaList(); }
-  else if (t.id === 'master-cat') { State.masterFilter.cat = t.value; renderMasterList($('#master-list')); }
-  else if (t.id === 'master-aktif') { State.masterFilter.aktif = t.value; renderMasterList($('#master-list')); }
-  else if (t.id === 'laporan-month') { State.laporanMonth = t.value || State.laporanMonth; renderLaporan(); }
-  else if (t.id === 'import-file') { handleImportFile(e); }
-  else if (t.id === 'u-foto-file') {
+  const isDD = !!(t.dataset && t.dataset.ddId);
+  const id = isDD ? t.dataset.ddId : t.id;
+  const val = isDD ? DD.val(id) : t.value;
+  if (id === 'agenda-cat') { State.agendaFilter.cat = val; renderAgendaList(); }
+  else if (id === 'agenda-status') { State.agendaFilter.status = val; renderAgendaList(); }
+  else if (id === 'set-tema') { State.settings.tema = val; applyTheme(); }
+  else if (id === 'laporan-month') { State.laporanMonth = val || State.laporanMonth; renderLaporan(); }
+  else if (id === 'import-file') { handleImportFile(e); }
+  else if (id === 'u-foto-file') {
     const f = t.files[0];
     if (f) compressImage(f, 400, d => { if (d) { State.settings.fotoProfil = d; $('#u-foto').src = d; $('#u-foto').style.display = ''; $('#u-foto').parentElement.querySelector('.muted').style.display = 'none'; cacheSettings(); } });
   } else if (t.id === 'u-logo-file') {
@@ -2366,10 +2411,8 @@ function handleChange(e) {
 function handleInput(e) {
   const t = e.target;
   if (t.id === 'agenda-search') { State.agendaFilter.q = t.value; debouncedAgendaList(); }
-  else if (t.id === 'master-search') { State.masterFilter.q = t.value; debouncedMasterList(); }
 }
 const debouncedAgendaList = debounce(renderAgendaList, 250);
-const debouncedMasterList = debounce(() => renderMasterList($('#master-list')), 250);
 
 /* Delegasi submit form */
 async function handleSubmit(e) {
@@ -2435,9 +2478,12 @@ async function init() {
   let rT;
   window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(redrawCharts, 250); });
 
-  // saat kembali ke tab
+  // saat kembali ke aplikasi: jam + pengingat + auto-sinkron (bila >2 menit)
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { updateClock(); reminderTick(); }
+    if (!document.hidden) {
+      updateClock(); reminderTick();
+      if (Date.now() - State.lastSync > 120000) syncAll({ silent: true });
+    }
   });
 
   // Tanpa layar login — langsung masuk ke Dashboard
