@@ -2378,7 +2378,21 @@ function handleClick(e) {
       const panel = dd.querySelector('[data-dd-panel]');
       const wasOpen = !panel.classList.contains('hidden');
       closeAllDD();
-      if (!wasOpen) { panel.classList.remove('hidden'); dd.classList.add('open'); }
+      if (!wasOpen) {
+        panel.classList.remove('hidden');
+        dd.classList.add('open');
+        // Atur posisi: buka ke atas bila ruang di bawah tidak cukup
+        panel.style.top = 'calc(100% + 6px)';
+        panel.style.bottom = 'auto';
+        const r = panel.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - r.top;
+        if (r.height > spaceBelow && r.top > r.height + 20) {
+          panel.style.top = 'auto';
+          panel.style.bottom = 'calc(100% + 6px)';
+        }
+        // Pastikan panel terlihat (modal bisa memotong bagian bawah)
+        setTimeout(() => { try { panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { /* abaikan */ } }, 30);
+      }
       break;
     }
     case 'dd-opt': {
