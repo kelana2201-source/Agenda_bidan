@@ -36,6 +36,17 @@ const APP = {
   tahun: 2026,
 };
 
+/* Koneksi database bawaan — isi SEKALI di sini lalu unggah ulang ke
+   GitHub Pages. Dengan ini, setiap perangkat (HP, komputer, dst.) yang
+   membuka aplikasi akan LANGSUNG terhubung ke Spreadsheet yang sama,
+   tanpa perlu mengisi Spreadsheet ID / URL Web App satu-satu di tiap HP.
+   Kosongkan (biarkan '') untuk kembali ke Mode Demo bawaan.
+   Nilai ini hanya dipakai sebagai bawaan pertama kali; setelah tersimpan
+   di suatu perangkat, perubahan lewat Pengaturan → Umum tetap berlaku
+   untuk perangkat itu seperti biasa. */
+const DEFAULT_SPREADSHEET_ID = '1nQPoelyCvHHHvCm945DlLI2y4dDrKaFMJkdE-qmvof4';
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwiUG87Cxik3JT3aZ4JplsfCCq8aRt0z5aFRlx48Dg_06mm6XK_8owj8gTX8Z4J4JvGZg/exec';
+
 const K = {
   s_settings: 'bidan_settings_v1',
   s_data: 'bidan_data_v1',
@@ -98,8 +109,8 @@ const SETTINGS_DEFAULT = {
   fotoProfil: '',      // data URL
   tema: 'system',
   password: 'bidan123',
-  spreadsheetId: '',
-  gasUrl: '',
+  spreadsheetId: DEFAULT_SPREADSHEET_ID,
+  gasUrl: DEFAULT_GAS_URL,
   sheets: { agenda: 'Agenda', piket: 'JadwalPiket', master: 'MasterKegiatan', settings: 'Pengaturan', log: 'LogAktivitas' },
   telegram: {
     token: '', chatId: '', aktif: false,
@@ -2331,12 +2342,18 @@ async function syncAll(opts = {}) {
   }
 }
 
-/* Kirim ulang operasi yang tertunda saat offline */
+/* Kirim ulang operasi yang tertunda saat offline.
+   Penting: operasi yang gagal (mis. sedang benar-benar offline, atau
+   error server) TETAP disimpan di antrian dan dicoba lagi lain kali —
+   sebelumnya queueClear() dipanggil tanpa syarat sehingga operasi yang
+   gagal ikut terhapus permanen dan datanya tidak pernah sampai ke
+   Spreadsheet meski tampilan lokal sudah menganggapnya selesai. */
 async function flushQueue() {
   const q = queueAll();
   if (!q.length) return;
   setProgress(30);
   let ok = 0;
+  const sisa = [];
   for (const op of q) {
     try {
       if (op.action === 'saveAgenda') await Store.saveAgenda(op.item);
@@ -2347,10 +2364,11 @@ async function flushQueue() {
       else if (op.action === 'deleteMaster') await Store.deleteMaster(op.id);
       else if (op.action === 'saveSettings') await Store.saveSettings(op.settings);
       ok++;
-    } catch (e) { /* tetap di antrian */ }
+    } catch (e) { sisa.push(op); /* tetap di antrian, coba lagi lain kali */ }
   }
-  queueClear();
+  if (sisa.length) lsSet(K.s_queue, sisa); else queueClear();
   if (ok) toast('📤 ' + ok + ' operasi offline berhasil dikirim', 'success');
+  if (sisa.length) toast('⚠️ ' + sisa.length + ' operasi belum terkirim, akan dicoba lagi', 'warn');
 }
 
 /* Pindahkan data yang tersimpan di mode demo (perangkat) ke Spreadsheet */

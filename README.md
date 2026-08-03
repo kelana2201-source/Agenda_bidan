@@ -294,10 +294,12 @@ function handle_(e, isPost) {
     var action = p.action || '';
     var sheets = getSheets_(p);
 
-    // Aksi sensitif (master, pengaturan, hapus data, telegram)
-    // harus menyertakan kata sandi yang benar.
-    var needPass = ['saveMaster', 'deleteMaster', 'saveSettings',
-                    'deleteAgenda', 'deletePiket', 'telegram'].indexOf(action) !== -1;
+    // Hanya saveSettings (Pengaturan → Umum: profil, kata sandi,
+    // koneksi database) yang butuh kata sandi. Agenda, piket,
+    // Master Kegiatan, dan Telegram sengaja bebas tanpa sandi
+    // (lihat bagian 10 — data bersifat dinamis / notifikasi
+    // otomatis harus tetap jalan tanpa sesi terbuka).
+    var needPass = ['saveSettings'].indexOf(action) !== -1;
     if (needPass && !checkPass_(p)) return err_('Kata sandi salah');
 
     switch (action) {
