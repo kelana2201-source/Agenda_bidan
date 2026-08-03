@@ -1352,6 +1352,9 @@ function renderPiket() {
     ${chipBtn2('all', 'Semua', filt)}${chipBtn2('Pagi', '🟢 Pagi', filt)}${chipBtn2('Siang', '🟠 Siang', filt)}${chipBtn2('Malam', '🔵 Malam', filt)}
   </div>
 
+  <div class="section-h">Timeline Piket Bulan Ini</div>
+  <div id="piket-list" class="mb-16">${list.length ? list.map(piketCard).join('') : emptyState('🕐', 'Tidak ada piket', 'Ketuk tanggal pada kalender untuk menambah jadwal piket.')}</div>
+
   <div class="card mb-16">
     <div class="cal-head">
       <button class="icon-btn" data-action="piket-prev">‹</button>
@@ -1367,10 +1370,7 @@ function renderPiket() {
       <span>🟠 Siang ${fmtHM(State.settings.shifts.siang.start)}–${fmtHM(State.settings.shifts.siang.end)}</span>
       <span>🔵 Malam ${fmtHM(State.settings.shifts.malam.start)}–${fmtHM(State.settings.shifts.malam.end)}</span>
     </div>
-  </div>
-
-  <div class="section-h">Timeline Piket Bulan Ini</div>
-  <div id="piket-list">${list.length ? list.map(piketCard).join('') : emptyState('🕐', 'Tidak ada piket', 'Ketuk tanggal pada kalender untuk menambah jadwal piket.')}</div>`;
+  </div>`;
 
   // jalankan countdown tiap detik
   clearInterval(State._cdTimer);
