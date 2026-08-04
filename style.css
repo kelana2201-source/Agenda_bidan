@@ -276,6 +276,10 @@ textarea.input { min-height: 84px; resize: vertical; }
 .bn-item.active { color: var(--primary); }
 .bn-item.active .bn-ico { transform: translateY(-2px) scale(1.12); }
 
+/* Dashboard tanpa tombol tambah melayang agar area ringkasan tetap bersih. */
+body[data-view="dashboard"] .fab,
+body[data-view="dashboard"] .fab-menu { display: none !important; }
+
 /* FAB */
 .fab {
   position: fixed; right: 18px; bottom: calc(var(--bnav-h) + 20px); z-index: 50;

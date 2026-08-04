@@ -697,6 +697,7 @@ const VIEWS = {
 function navigate(view, silent) {
   if (!VIEWS[view]) view = 'dashboard';
   State.currentView = view;
+  document.body.dataset.view = view;
   $$('.view').forEach(v => v.classList.remove('active'));
   const el = $('#view-' + view);
   if (el) { el.classList.add('active'); window.scrollTo({ top: 0 }); }
