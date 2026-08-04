@@ -47,6 +47,30 @@ const HARI = (typeof window !== 'undefined' && window.HARI) || ['Minggu', 'Senin
 const BULAN = (typeof window !== 'undefined' && window.BULAN) || ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const STATUS_LIST = (typeof window !== 'undefined' && window.STATUS_LIST) || ['Belum', 'Berlangsung', 'Selesai', 'Ditunda', 'Dibatalkan'];
 const PRIORITAS_LIST = (typeof window !== 'undefined' && window.PRIORITAS_LIST) || ['Rendah', 'Sedang', 'Tinggi', 'Urgent'];
+
+// Hari libur nasional 2026 — sesuai SKB 3 Menteri (Menag, Menaker, Menpan-RB)
+// Nomor 1497, 2, 5 Tahun 2025. 17 hari libur nasional (di luar cuti bersama).
+// Perlu diperbarui manual tiap pergantian tahun / kalau ada perubahan resmi.
+const LIBUR_NASIONAL = {
+  '2026-01-01': 'Tahun Baru Masehi',
+  '2026-01-15': 'Isra Mikraj Nabi Muhammad SAW',
+  '2026-02-17': 'Tahun Baru Imlek 2577',
+  '2026-03-19': 'Hari Raya Nyepi (Tahun Baru Saka 1948)',
+  '2026-03-20': 'Hari Raya Idul Fitri 1447 H',
+  '2026-03-21': 'Hari Raya Idul Fitri 1447 H',
+  '2026-04-03': 'Wafat Isa Almasih',
+  '2026-04-05': 'Kebangkitan Yesus Kristus (Paskah)',
+  '2026-05-01': 'Hari Buruh Internasional',
+  '2026-05-14': 'Kenaikan Isa Almasih',
+  '2026-05-27': 'Hari Raya Idul Adha 1447 H',
+  '2026-05-31': 'Hari Raya Waisak 2570',
+  '2026-06-01': 'Hari Lahir Pancasila',
+  '2026-06-16': 'Tahun Baru Islam 1448 H',
+  '2026-08-17': 'Hari Kemerdekaan RI',
+  '2026-08-25': 'Maulid Nabi Muhammad SAW',
+  '2026-12-25': 'Hari Raya Natal',
+};
+
 const KATEGORI = (typeof window !== 'undefined' && window.KATEGORI) || {
   'Pelayanan Kesehatan': '#0EA5E9',
   'Kegiatan Rutin': '#14B8A6',
@@ -84,12 +108,12 @@ const MASTER_DEFAULT = (typeof window !== 'undefined' && window.MASTER_DEFAULT) 
 ];
 
 const SETTINGS_DEFAULT = (typeof window !== 'undefined' && window.SETTINGS_DEFAULT) || {
-  namaBidan: 'Bidan Dewi',
-  namaPuskesmas: 'Puskesmas Purwokerto',
-  namaDesa: 'Kedungwuluh',
-  logo: '', fotoProfil: '', tema: 'system', password: 'bidan123',
-  spreadsheetId: '1nQPoelyCvHHHvCm945DlLI2y4dDrKaFMJkdE-qmvof4',
-  gasUrl: 'https://script.google.com/macros/s/AKfycbwiUG87Cxik3JT3aZ4JplsfCCq8aRt0z5aFRlx48Dg_06mm6XK_8owj8gTX8Z4J4JvGZg/exec',
+  namaBidan: 'Bidan',
+  namaPuskesmas: '',
+  namaDesa: '',
+  logo: '', fotoProfil: '', tema: 'system', password: '',
+  spreadsheetId: '',
+  gasUrl: '',
   sheets: { agenda: 'Agenda', piket: 'JadwalPiket', master: 'MasterKegiatan', settings: 'Pengaturan', log: 'LogAktivitas' },
   telegram: { token: '', chatId: '', aktif: false, jenis: { hariIni: true, besok: true, piket: true, terlambat: true, jam1: false, jam30: false } },
   shifts: JSON.parse(JSON.stringify(SHIFT_DEFAULT)),
@@ -160,18 +184,35 @@ function parseList(v) {
 }
 function checklistDone(c) { return c.filter(i => i.selesai).length; }
 
-function compressImage(file, maxW, cb) {
+// maxChars: batas aman panjang base64 agar muat di satu sel Google Sheets
+// (batas keras Sheets = 50.000 karakter/sel). Kalau hasil kompresi awal masih
+// kebesaran, otomatis dicoba lagi dengan kualitas & ukuran lebih kecil supaya
+// tidak gagal disimpan ke server secara diam-diam.
+function compressImage(file, maxW, cb, maxChars = 45000) {
   const reader = new FileReader();
   reader.onload = () => {
     const img = new Image();
     img.onload = () => {
-      const scale = Math.min(1, maxW / img.width);
-      const cv = document.createElement('canvas');
-      cv.width = Math.round(img.width * scale);
-      cv.height = Math.round(img.height * scale);
-      const ctx = cv.getContext('2d');
-      ctx.drawImage(img, 0, 0, cv.width, cv.height);
-      cb(cv.toDataURL('image/jpeg', 0.72));
+      function render(w, quality) {
+        const scale = Math.min(1, w / img.width);
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * scale);
+        cv.height = Math.round(img.height * scale);
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        return cv.toDataURL('image/jpeg', quality);
+      }
+      let w = maxW, q = 0.72;
+      let out = render(w, q);
+      let tries = 0;
+      // Turunkan kualitas dulu, lalu ukuran, sampai aman atau kehabisan percobaan.
+      while (out.length > maxChars && tries < 6) {
+        if (q > 0.35) q -= 0.15; else w = Math.round(w * 0.8);
+        out = render(w, q);
+        tries++;
+      }
+      if (out.length > maxChars) { cb(null, 'terlalu-besar'); return; }
+      cb(out);
     };
     img.onerror = () => cb(null);
     img.src = reader.result;
@@ -192,8 +233,6 @@ const State = {
   user: null,
   unlocked: false,        // sesi terbuka setelah kata sandi benar (hanya di memori)
   _pwd: '',               // kata sandi sesi (tidak disimpan permanen)
-  _pwdPrompted: false,    // sudah pernah diminta sandi utk antrian (1x per sesi)
-  _pwdToastShown: false,  // toast "perlu sandi" hanya 1x per sesi saat silent-sync
   offline: false,
   demo: false,            // mode demo (belum ada koneksi GAS)
   currentView: 'dashboard',
@@ -202,6 +241,7 @@ const State = {
   calendar: { y: new Date().getFullYear(), m: new Date().getMonth(), selected: todayKey() },
   piketCal: { y: new Date().getFullYear(), m: new Date().getMonth() },
   laporanMonth: todayKey().slice(0, 7),
+  laporanFilter: { scope: 'month', start: '', end: '', kategori: '', status: '' },
   agendaFilter: { range: 'all', cat: '', status: '', q: '' },
   piketFilter: 'all',
   masterFilter: { q: '', cat: '', aktif: 'all' },
@@ -354,13 +394,18 @@ const Store = {
    memerlukan kata sandi karena bersifat dinamis.
    ============================================================ */
 
-/* Minta kata sandi (modal). Menyelesaikan dengan true bila benar,
-   false bila dibatalkan (supaya pemanggil tidak menggantung). */
+/* Minta kata sandi (modal). Menyelesaikan dengan true bila benar. */
 function requirePassword() {
   return new Promise(resolve => {
     if (State.unlocked) { resolve(true); return; }
-    let done = false;
-    const finish = v => { if (!done) { done = true; resolve(v); } };
+    // Instalasi baru tidak memiliki kata sandi bawaan. Izinkan pengguna membuatnya
+    // dari Pengaturan, tanpa mengekspos password default di kode publik.
+    if (!State.settings.password) {
+      State.unlocked = true;
+      toast('🔐 Buat kata sandi baru sebelum menyimpan koneksi database', 'warn', 4500);
+      resolve(true);
+      return;
+    }
     openModal(`
       <form id="form-unlock">
         <div class="field">
@@ -379,12 +424,6 @@ function requirePassword() {
       </form>`, { title: '🔒 Kata Sandi Diperlukan' });
     const inp = $('#u-pass');
     inp.focus();
-    // Bila modal ditutup tanpa sukses → anggap dibatalkan
-    const root = $('#modal-root');
-    root.addEventListener('click', e => {
-      const a = e.target.closest('[data-action]');
-      if (a && (a.dataset.action === 'modal-close' || a.dataset.action === 'modal-backdrop')) finish(false);
-    });
     $('#form-unlock').addEventListener('submit', e => {
       e.preventDefault();
       e.stopPropagation(); // jangan sampai handler submit global ikut jalan
@@ -393,7 +432,7 @@ function requirePassword() {
         State._pwd = inp.value;
         closeModal();
         toast('🔓 Terbuka — perubahan data diizinkan', 'success');
-        finish(true);
+        resolve(true);
       } else {
         const er = $('#unlock-error');
         er.textContent = 'Kata sandi salah. Coba lagi.';
@@ -409,8 +448,6 @@ function requirePassword() {
 function lockApp() {
   State.unlocked = false;
   State._pwd = '';
-  State._pwdPrompted = false;
-  State._pwdToastShown = false;
   closeMore(); closeFab(); closeModal();
   if (State.currentView === 'pengaturan') navigate('dashboard');
   toast('🔒 Aplikasi dikunci', 'info');
@@ -461,17 +498,23 @@ function openModal(html, opts = {}) {
     '<div class="modal-head"><h3>' + opts.title + '</h3><button class="icon-btn" data-action="modal-close">✕</button></div>' +
     html + '</div></div>';
 }
-function closeModal() { $('#modal-root').innerHTML = ''; }
+let _confirmResolve = null;
+function closeModal() {
+  $('#modal-root').innerHTML = '';
+  if (_confirmResolve) { const resolve = _confirmResolve; _confirmResolve = null; resolve(false); }
+}
 
 function confirmDialog(text, opt = {}) {
   return new Promise(resolve => {
+    _confirmResolve = resolve;
     openModal(
       '<p style="font-size:14.5px">' + text + '</p>' +
-      '<div class="modal-foot"><button class="btn btn-soft" data-action="modal-close">Batal</button>' +
+      '<div class="modal-foot"><button class="btn btn-soft" id="confirm-no">Batal</button>' +
       '<button class="btn ' + (opt.danger ? 'btn-danger' : 'btn-primary') + '" id="confirm-yes">' + (opt.yesText || 'Ya, lanjutkan') + '</button></div>',
       { title: opt.title || 'Konfirmasi' }
     );
-    $('#confirm-yes').onclick = () => { closeModal(); resolve(true); };
+    $('#confirm-no').onclick = () => closeModal();
+    $('#confirm-yes').onclick = () => { _confirmResolve = null; closeModal(); resolve(true); };
   });
 }
 
@@ -645,8 +688,8 @@ const VIEWS = {
   agenda: { render: renderAgenda, sub: () => 'Daftar kegiatan' },
   kalender: { render: renderKalender, sub: () => bulanTahun(new Date(State.calendar.y, State.calendar.m, 1)) },
   piket: { render: renderPiket, sub: () => bulanTahun(new Date(State.piketCal.y, State.piketCal.m, 1)) },
+  galeri: { render: renderGaleri, sub: () => 'Dokumentasi foto kegiatan' },
   laporan: { render: renderLaporan, sub: () => 'Rekap ' + State.laporanMonth.replace('-', ' ') },
-  galeri: { render: renderGaleri, sub: () => 'Foto dokumentasi kegiatan' },
   pengaturan: { render: renderPengaturan, sub: () => 'Konfigurasi aplikasi' },
   tentang: { render: renderTentang, sub: () => 'v' + APP.versi },
 };
@@ -694,25 +737,23 @@ function renderDashboard() {
   const nextPiket = sortAgenda(State.piket.map(p => ({ ...p, jamMulai: SHIFT_JAM(p.shift) }))).find(p => p.tanggal > tKey);
   const info = shiftInfo(now);
 
-  const foto = '<div class="hero-photo">' + (s.fotoProfil ? '<img class="avatar avatar-lg" src="' + s.fotoProfil + '" alt="Foto">' : '<div class="avatar avatar-lg" style="background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:24px">👩‍⚕️</div>') + '</div>';
+  const foto = s.fotoProfil ? '<img class="avatar avatar-lg" src="' + s.fotoProfil + '" alt="Foto">' : '<div class="avatar avatar-lg" style="background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:30px">👩‍⚕️</div>';
 
   el.innerHTML = `
   <div class="hero">
-    ${foto}
     <div class="greet">${sapaan()},</div>
     <h1>${escapeHtml(s.namaBidan || 'Bidan')}</h1>
     <div class="hero-row">
       <div class="clock" id="hero-clock">${clockStr()}</div>
       <div class="hero-date">${fmtTanggalPanjang(tKey)}</div>
+      ${foto}
     </div>
-    <div class="small" style="opacity:.85;margin-top:10px">🔄 Terakhir sinkron: ${State.lastSync ? new Date(State.lastSync).toLocaleString('id-ID') : '—'} ${isDemoMode() ? '• Mode Demo (lokal)' : '• Spreadsheet'}</div>
   </div>
 
   ${isDemoMode() ? `<div class="card mb-16" style="border-left:5px solid var(--amber);background:var(--amber-soft)">
     <div class="small"><b>⚠️ Mode Demo aktif</b> — perangkat ini belum terhubung Google Spreadsheet (koneksi tersimpan per perangkat; mengisi di komputer tidak otomatis berlaku di HP). Data hanya tersimpan di perangkat ini.</div>
     <div class="flex flex-wrap mt-8">
       <button class="btn btn-primary btn-sm" data-action="go-koneksi">🔌 Hubungkan Database</button>
-      <button class="btn btn-soft btn-sm" data-action="paste-koneksi">📥 Tempel Koneksi dari Perangkat Lain</button>
       <button class="btn btn-soft btn-sm" data-action="migrate-demo">📤 Pindahkan Data Demo → Spreadsheet</button>
     </div>
   </div>` : ''}
@@ -872,8 +913,7 @@ function miniCalendar(selKey) {
       if (k === selKey) cls.push('today');
       if (day.getMonth() !== m) cls.push('other');
       if (has[k]) cls.push('has');
-      if (liburInfo(k)) cls.push('libur');
-      h += '<td><span class="' + cls.join(' ') + '" title="' + (liburInfo(k) ? escapeHtml(liburInfo(k).nama) : '') + '">' + day.getDate() + '</span></td>';
+      h += '<td><span class="' + cls.join(' ') + '">' + day.getDate() + '</span></td>';
     }
     h += '</tr>';
   }
@@ -1064,13 +1104,14 @@ function openAgendaForm(id) {
   $('#a-foto').addEventListener('change', e => {
     const f = e.target.files[0];
     if (!f) return;
-    compressImage(f, 900, dataUrl => {
+    compressImage(f, 640, (dataUrl, err) => {
       if (dataUrl) {
         $('#a-foto-preview').src = dataUrl; $('#a-foto-preview').style.display = '';
         $('#a-foto-placeholder').style.display = 'none';
         $('#a-foto-hapus').classList.remove('hidden');
         State._fotoDraft = dataUrl;
-      } else toast('Foto gagal diproses', 'error');
+      } else if (err === 'terlalu-besar') toast('⚠️ Foto masih terlalu besar untuk disimpan — coba foto lain atau potong dulu', 'error', 4200);
+      else toast('Foto gagal diproses', 'error');
     });
   });
 }
@@ -1240,25 +1281,25 @@ function renderKalender() {
       const k = dateKey(day);
       const inMonth = day.getMonth() === m;
       const items = agendaByDay[k] || [];
-      const libur = liburInfo(k);
+      const liburNama = LIBUR_NASIONAL[k];
+      const isMinggu = day.getDay() === 0;
       const cls = ['cal-cell'];
       if (!inMonth) cls.push('other');
       if (k === today) cls.push('today');
       if (k === c.selected) cls.push('selected');
-      if (items.length) cls.push('has');
-      if (libur) { cls.push('libur'); if (libur.nasional) cls.push('libur-nas'); }
+      if (isMinggu || liburNama) cls.push('holiday');
       const dots = items.slice(0, 4).map(it => '<i style="background:' + (KATEGORI[it.kategori] || '#14B8A6') + '"></i>').join('');
       const cnt = items.length ? '<span class="small" style="position:absolute;top:3px;right:6px;font-size:9px;font-weight:800;opacity:.75">' + items.length + '</span>' : '';
-      cells += `<button class="${cls.join(' ')}" data-action="cal-day" data-val="${k}" title="${libur ? escapeHtml(libur.nama) : ''}">${cnt}${day.getDate()}<span class="dots">${dots}</span></button>`;
+      const liburTitle = liburNama ? ' title="' + escapeHtml(liburNama) + '"' : '';
+      cells += `<button class="${cls.join(' ')}" data-action="cal-day" data-val="${k}"${liburTitle}>${cnt}${day.getDate()}<span class="dots">${dots}</span></button>`;
     }
   }
 
   const selItems = sortAgenda(agendaByDay[c.selected] || []);
-  const selLibur = liburInfo(c.selected);
 
   el.innerHTML = `
   <div class="kal-layout">
-  <div class="card kal-card">
+  <div class="card kal-card calendar-card">
     <div class="cal-head">
       <button class="icon-btn" data-action="cal-prev">‹</button>
       <div class="cal-title">${BULAN[m]} ${y}</div>
@@ -1270,7 +1311,7 @@ function renderKalender() {
     </div>
     <div class="cal-legend">
       <span><i style="background:var(--primary)"></i>Hari ini</span>
-      <span><i style="background:var(--red)"></i>Libur</span>
+      <span><i style="background:#DC2626"></i>Hari Libur / Minggu</span>
       <span><i style="background:var(--green)"></i>Pelayanan</span>
       <span><i style="background:var(--amber)"></i>Penyuluhan</span>
       <span><i style="background:var(--primary-2)"></i>Rutin</span>
@@ -1282,7 +1323,7 @@ function renderKalender() {
     <div class="card-title">📋 Agenda ${fmtTanggal(c.selected)} <span class="grow"></span>
       <button class="btn btn-primary btn-sm" data-action="cal-add-agenda" data-val="${c.selected}">+ Agenda</button>
     </div>
-    ${selLibur ? `<div class="chip" style="background:var(--red-soft);color:var(--red);margin-bottom:10px">🎌 ${escapeHtml(selLibur.nama)}${selLibur.nasional ? '' : ' (akhir pekan)'}</div>` : ''}
+    ${LIBUR_NASIONAL[c.selected] ? '<div class="holiday-banner">🎉 Libur Nasional: <b>' + escapeHtml(LIBUR_NASIONAL[c.selected]) + '</b></div>' : ''}
     ${selItems.length ? selItems.map(agendaCard).join('') : emptyState('🌤️', 'Tidak ada agenda', 'Ketuk tanggal lain atau tambah agenda.')}
   </div>
   </div>`;
@@ -1357,12 +1398,10 @@ function renderPiket() {
       const k = dateKey(day);
       const p = piketByDay[k];
       const inMonth = day.getMonth() === m;
-      const libur = liburInfo(k);
       const cls = ['cal-cell'];
       if (!inMonth) cls.push('other');
       if (k === today) cls.push('today');
-      if (p && k < today) cls.push('past');  // piket yang sudah lewat → pudar, tidak tampak aktif
-      if (libur) { cls.push('libur'); if (libur.nasional) cls.push('libur-nas'); }
+      if (p && k < today) cls.push('cal-cell-past');
       const meta = p ? SHIFT_META(p.shift) : null;
       cells += `<button class="${cls.join(' ')}" data-action="piket-day" data-val="${k}" title="${p ? 'Shift ' + p.shift : 'Kosong — ketuk untuk set shift'}"
         style="${p ? 'background:' + meta.warna + '22;border-color:' + meta.warna + ';color:var(--text)' : ''}">
@@ -1424,6 +1463,34 @@ function renderPiket() {
   }, 1000);
 }
 
+function renderGaleri() {
+  const el = $('#view-galeri');
+  const items = State.agenda
+    .filter(a => a.foto)
+    .slice()
+    .sort((a, b) => b.tanggal.localeCompare(a.tanggal) || (b.jamMulai || '').localeCompare(a.jamMulai || ''));
+
+  if (!items.length) {
+    el.innerHTML = `<div class="card">${emptyState('🖼️', 'Belum ada foto dokumentasi', 'Foto yang diunggah lewat form Agenda akan otomatis muncul di sini.')}</div>`;
+    return;
+  }
+
+  el.innerHTML = `
+  <div class="card mb-16">
+    <div class="card-title">🖼️ Galeri Dokumentasi <span class="grow"></span><span class="muted small">${items.length} foto</span></div>
+    <div class="galeri-grid">
+      ${items.map(a => `
+        <div class="galeri-item">
+          <img src="${a.foto}" alt="Dokumentasi kegiatan" data-action="lightbox" loading="lazy">
+          <button class="galeri-cap" data-action="agenda-detail" data-id="${a.id}" title="Buka detail agenda">
+            <span class="galeri-date">${fmtTanggal(a.tanggal)}</span>
+            <span class="galeri-name">${escapeHtml(a.namaKegiatan || '—')}</span>
+          </button>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
 function chipBtn2(val, label, cur) {
   return '<button class="chip ' + (cur === val ? 'active' : '') + '" data-action="piket-filter" data-val="' + val + '">' + label + '</button>';
 }
@@ -1433,11 +1500,11 @@ function piketCard(p) {
   const meta = SHIFT_META(p.shift);
   const past = p.tanggal < todayKey();
   return `
-  <button class="card agenda-card shift-card mb-12 ${past ? 'past' : ''}" data-action="piket-day" data-val="${p.tanggal}" style="--shift-color:${meta.warna};text-align:left">
+  <button class="card agenda-card shift-card mb-12 ${past ? 'shift-past' : ''}" data-action="piket-day" data-val="${p.tanggal}" style="--shift-color:${meta.warna};text-align:left">
     <div class="agenda-head">
       <span class="agenda-date">📅 ${fmtTanggal(p.tanggal)} • ${namaHari(p.tanggal)}</span>
       <span class="shift-chip" style="background:${meta.warna}">${meta.ikon} Shift ${meta.label}</span>
-      ${past ? '<span class="badge" style="background:var(--gray-soft);color:var(--text-muted)">✓ Selesai</span>' : ''}
+      ${past ? '<span class="shift-done-badge">✓ Selesai</span>' : ''}
     </div>
     <div class="agenda-meta">
       <span>🕐 <b>${fmtHM(meta.start)} – ${fmtHM(meta.end)}</b></span>
@@ -1634,26 +1701,6 @@ async function deleteMaster(id) {
 }
 
 /* ============================================================
-   14b. VIEW: GALERI (foto dokumentasi dari lampiran agenda)
-   ============================================================ */
-
-function renderGaleri() {
-  const el = $('#view-galeri');
-  const items = sortAgenda(State.agenda.filter(a => a.foto)).slice().reverse(); // terbaru dulu
-  el.innerHTML = `
-  <div class="card mb-16">
-    <div class="card-title">🖼️ Galeri Dokumentasi <span class="grow"></span><span class="badge" style="background:var(--primary-soft);color:var(--primary)">${items.length} foto</span></div>
-    <p class="small muted">Foto diambil otomatis dari lampiran agenda. Ketuk foto untuk membuka detail kegiatannya.</p>
-  </div>
-  ${items.length ? `<div class="gal-grid">${items.map(a => `
-    <button class="gal-item" data-action="agenda-detail" data-id="${escapeHtml(a.id)}" title="${escapeHtml(a.namaKegiatan)} — ${fmtTanggal(a.tanggal)}">
-      <img src="${a.foto}" alt="${escapeHtml(a.namaKegiatan)}" loading="lazy">
-      <span class="gal-cap"><b>${escapeHtml(a.namaKegiatan)}</b><small>${fmtTanggal(a.tanggal)}${a.lokasi ? ' • ' + escapeHtml(a.lokasi) : ''}</small></span>
-    </button>`).join('')}</div>`
-  : emptyState('🖼️', 'Belum ada foto', 'Tambahkan foto lewat "Lampiran Foto" saat membuat / mengedit agenda.')}`;
-}
-
-/* ============================================================
    15. VIEW: LAPORAN (+ export)
    ============================================================ */
 
@@ -1661,13 +1708,29 @@ function renderLaporan() {
   const el = $('#view-laporan');
   el.innerHTML = `
   <div class="card mb-16">
-    <div class="flex flex-wrap">
-      <div class="field grow" style="min-width:200px;margin:0"><label>Bulan Laporan</label>
-        <input type="month" class="input" id="laporan-month" value="${State.laporanMonth}"></div>
-      <div class="flex" style="align-items:flex-end;margin-left:auto;gap:8px">
-        <button class="btn btn-soft" data-action="export-print">🖨️ Cetak / PDF</button>
-        <button class="btn btn-primary" data-action="export-excel">📗 Excel</button>
-      </div>
+    <div class="card-title">🔎 Filter Laporan</div>
+    <div class="form-grid">
+      <div class="field"><label>Jenis laporan</label><select class="input" id="lap-scope">
+        <option value="month" ${State.laporanFilter.scope === 'month' ? 'selected' : ''}>Bulan yang dipilih</option>
+        <option value="all" ${State.laporanFilter.scope === 'all' ? 'selected' : ''}>Semua data</option>
+        <option value="range" ${State.laporanFilter.scope === 'range' ? 'selected' : ''}>Rentang tanggal tertentu</option>
+      </select></div>
+      <div class="field"><label>Bulan Laporan</label><input type="month" class="input" id="laporan-month" value="${State.laporanMonth}" ${State.laporanFilter.scope === 'month' ? '' : 'disabled'}></div>
+      <div class="field"><label>Dari tanggal</label><input type="date" class="input" id="lap-start" value="${State.laporanFilter.start}" ${State.laporanFilter.scope === 'range' ? '' : 'disabled'}></div>
+      <div class="field"><label>Sampai tanggal</label><input type="date" class="input" id="lap-end" value="${State.laporanFilter.end}" ${State.laporanFilter.scope === 'range' ? '' : 'disabled'}></div>
+      <div class="field"><label>Kategori</label><select class="input" id="lap-kategori"><option value="">Semua kategori</option>${Object.keys(KATEGORI).map(k => '<option value="' + escapeHtml(k) + '" ' + (State.laporanFilter.kategori === k ? 'selected' : '') + '>' + escapeHtml(k) + '</option>').join('')}</select></div>
+      <div class="field"><label>Status</label><select class="input" id="lap-status"><option value="">Semua status</option>${STATUS_LIST.concat(['Terlambat']).map(k => '<option value="' + k + '" ' + (State.laporanFilter.status === k ? 'selected' : '') + '>' + k + '</option>').join('')}</select></div>
+    </div>
+    <div class="flex flex-wrap" style="justify-content:space-between">
+      <p class="small muted">Filter berlaku untuk tampilan, PDF, Excel, dan cetak.</p>
+      <button class="btn btn-primary btn-sm" data-action="laporan-apply">Terapkan Filter</button>
+    </div>
+  </div>
+  <div class="card mb-16">
+    <div class="flex flex-wrap" style="justify-content:flex-end;gap:8px">
+      <button class="btn btn-soft" data-action="export-print">🖨️ Cetak</button>
+      <button class="btn btn-primary" data-action="export-pdf">⬇️ Unduh PDF</button>
+      <button class="btn btn-soft" data-action="export-excel">📗 Excel</button>
     </div>
   </div>
   <div class="stat-grid" id="laporan-stats"></div>
@@ -1676,22 +1739,46 @@ function renderLaporan() {
     <div class="card"><div class="card-title">🍩 Kategori Kegiatan</div><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><canvas class="chart-sm" id="lap-donut-k" style="flex:1;min-width:150px"></canvas><div id="lap-legend-k" class="small muted" style="flex:1;min-width:140px"></div></div></div>
     <div class="card"><div class="card-title">🍩 Status Agenda</div><div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap"><canvas class="chart-sm" id="lap-donut-s" style="flex:1;min-width:150px"></canvas><div id="lap-legend-s" class="small muted" style="flex:1;min-width:140px"></div></div></div>
     <div class="card"><div class="card-title">📈 Progress per Kategori</div><div id="lap-progress"></div></div>
-    <div class="card wide"><div class="card-title">📋 Rincian Agenda Bulan Ini</div><div id="lap-table"></div></div>
+    <div class="card wide"><div class="card-title">📋 Rincian Agenda — ${laporanPeriodeLabel()}</div><div id="lap-table"></div></div>
   </div>`;
   renderLaporanStats();
   renderLaporanCharts();
   renderLaporanTable();
 }
 
+function laporanPeriodeLabel() {
+  const f = State.laporanFilter;
+  if (f.scope === 'all') return 'Semua data';
+  if (f.scope === 'range') return (f.start ? fmtTanggal(f.start) : 'Awal') + ' – ' + (f.end ? fmtTanggal(f.end) : 'Akhir');
+  return BULAN[+State.laporanMonth.slice(5, 7) - 1] + ' ' + State.laporanMonth.slice(0, 4);
+}
 function monthAgenda() {
-  const mm = State.laporanMonth;
-  return sortAgenda(State.agenda.filter(a => a.tanggal.slice(0, 7) === mm));
+  const f = State.laporanFilter;
+  let list = State.agenda.slice();
+  if (f.scope === 'month') list = list.filter(a => a.tanggal.slice(0, 7) === State.laporanMonth);
+  if (f.scope === 'range') list = list.filter(a => (!f.start || a.tanggal >= f.start) && (!f.end || a.tanggal <= f.end));
+  if (f.kategori) list = list.filter(a => a.kategori === f.kategori);
+  if (f.status) list = list.filter(a => f.status === 'Terlambat' ? isLate(a) : a.status === f.status);
+  return sortAgenda(list);
+}
+function laporanPiket() {
+  const f = State.laporanFilter;
+  let list = State.piket.slice();
+  if (f.scope === 'month') list = list.filter(p => p.tanggal.slice(0, 7) === State.laporanMonth);
+  if (f.scope === 'range') list = list.filter(p => (!f.start || p.tanggal >= f.start) && (!f.end || p.tanggal <= f.end));
+  return list;
+}
+function applyLaporanFilter() {
+  const f = State.laporanFilter;
+  f.scope = $('#lap-scope').value; f.start = $('#lap-start').value; f.end = $('#lap-end').value;
+  f.kategori = $('#lap-kategori').value; f.status = $('#lap-status').value;
+  if (f.scope === 'range' && f.start && f.end && f.start > f.end) { toast('Tanggal awal tidak boleh melebihi tanggal akhir', 'error'); return; }
+  renderLaporan();
 }
 
 function renderLaporanStats() {
   const list = monthAgenda();
-  const mm = State.laporanMonth;
-  const piket = State.piket.filter(p => p.tanggal.slice(0, 7) === mm).length;
+  const piket = laporanPiket().length;
   const done = list.filter(a => a.status === 'Selesai').length;
   const late = list.filter(isLate).length;
   const pending = list.filter(a => ['Belum', 'Berlangsung'].includes(a.status)).length;
@@ -1738,30 +1825,6 @@ function renderLaporanCharts() {
 
 const STATUS_COLOR = (typeof window !== 'undefined' && window.STATUS_COLOR) || { Belum: '#94A3B8', Berlangsung: '#3B82F6', Selesai: '#22C55E', Ditunda: '#F59E0B', Dibatalkan: '#EF4444', Terlambat: '#EF4444' };
 
-/* Hari libur nasional & cuti bersama (fallback bila constants.js tidak dimuat) */
-const LIBUR_NASIONAL = (typeof window !== 'undefined' && window.LIBUR_NASIONAL) || {
-  '2026-01-01': 'Tahun Baru 2026 Masehi', '2026-01-16': 'Isra Mikraj Nabi Muhammad SAW',
-  '2026-02-16': 'Cuti Bersama Imlek 2577 Kongzili', '2026-02-17': 'Tahun Baru Imlek 2577 Kongzili',
-  '2026-03-18': 'Cuti Bersama Hari Suci Nyepi', '2026-03-19': 'Hari Suci Nyepi (Tahun Baru Saka 1948)',
-  '2026-03-20': 'Cuti Bersama Idulfitri 1447 H', '2026-03-21': 'Idulfitri 1447 Hijriah', '2026-03-22': 'Idulfitri 1447 Hijriah',
-  '2026-03-23': 'Cuti Bersama Idulfitri 1447 H', '2026-03-24': 'Cuti Bersama Idulfitri 1447 H',
-  '2026-04-03': 'Wafat Yesus Kristus', '2026-04-05': 'Kebangkitan Yesus Kristus (Paskah)',
-  '2026-05-01': 'Hari Buruh Internasional', '2026-05-14': 'Kenaikan Yesus Kristus', '2026-05-15': 'Cuti Bersama Kenaikan Yesus Kristus',
-  '2026-05-27': 'Iduladha 1447 Hijriah', '2026-05-28': 'Cuti Bersama Iduladha 1447 H', '2026-05-31': 'Hari Raya Waisak 2570 BE',
-  '2026-06-01': 'Hari Lahir Pancasila', '2026-06-16': '1 Muharam Tahun Baru Islam 1448 H',
-  '2026-08-17': 'Proklamasi Kemerdekaan RI', '2026-08-25': 'Maulid Nabi Muhammad SAW',
-  '2026-12-24': 'Cuti Bersama Natal', '2026-12-25': 'Kelahiran Yesus Kristus (Natal)',
-};
-
-/* Info libur untuk satu tanggal (kunci 'YYYY-MM-DD'):
-   hari libur nasional/cuti bersama → { nama, nasional:true };
-   hari Minggu → { nama:'Hari Minggu', nasional:false }; lainnya → null */
-function liburInfo(k) {
-  if (LIBUR_NASIONAL[k]) return { nama: LIBUR_NASIONAL[k], nasional: true };
-  if (parseKey(k).getDay() === 0) return { nama: 'Hari Minggu', nasional: false };
-  return null;
-}
-
 function renderLaporanTable() {
   const list = monthAgenda();
   $('#lap-table').innerHTML = list.length ? `
@@ -1780,7 +1843,7 @@ function exportExcel() {
   const rows = laporanTableRows();
   if (!rows.length) { toast('Tidak ada data untuk diekspor', 'warn'); return; }
   const s = State.settings;
-  const mm = State.laporanMonth.replace('-', ' ');
+  const mm = laporanPeriodeLabel();
   const head = '<tr><th>Tanggal</th><th>Hari</th><th>Kegiatan</th><th>Kategori</th><th>Jam</th><th>Lokasi</th><th>Status</th></tr>';
   const body = rows.map(r => '<tr>' + r.map(c => '<td>' + escapeHtml(c) + '</td>').join('') + '</tr>').join('');
   const html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>' +
@@ -1794,10 +1857,10 @@ function exportExcel() {
 function exportPrint() {
   const rows = laporanTableRows();
   const s = State.settings;
-  const mm = State.laporanMonth.replace('-', ' ');
+  const mm = laporanPeriodeLabel();
   const list = monthAgenda();
   const done = list.filter(a => a.status === 'Selesai').length;
-  const piket = State.piket.filter(p => p.tanggal.slice(0, 7) === State.laporanMonth).length;
+  const piket = laporanPiket().length;
   const head = '<tr><th>No</th><th>Tanggal</th><th>Hari</th><th>Kegiatan</th><th>Kategori</th><th>Jam</th><th>Lokasi</th><th>Status</th></tr>';
   const body = rows.map((r, i) => '<tr><td>' + (i + 1) + '</td>' + r.map(c => '<td>' + escapeHtml(c) + '</td>').join('') + '</tr>').join('');
   const pa = $('#print-area');
@@ -1813,6 +1876,75 @@ function exportPrint() {
     <p style="margin-top:20px">Mengetahui,<br><br><br>(${escapeHtml(s.namaBidan || 'Bidan')})</p>`;
   setTimeout(() => window.print(), 120);
   Store.log('Cetak laporan', 'Bulan ' + mm);
+}
+
+/* PDF ringan tanpa library eksternal. Dibuat sebagai file unduhan (bukan
+   sekadar membuka dialog cetak), sehingga tombol "Unduh PDF" sesuai namanya. */
+function pdfAscii(value) {
+  return String(value == null ? '' : value).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\()]/g, '\\$&').replace(/[^\x20-\x7E]/g, '?');
+}
+function pdfWrap(text, max = 88) {
+  const words = pdfAscii(text).split(/\s+/); const lines = []; let line = '';
+  words.forEach(word => {
+    const next = line ? line + ' ' + word : word;
+    if (next.length > max && line) { lines.push(line); line = word; } else line = next;
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+function exportPDF() {
+  const list = monthAgenda();
+  if (!list.length) { toast('Tidak ada data untuk diunduh sebagai PDF', 'warn'); return; }
+  const s = State.settings, period = laporanPeriodeLabel();
+  const done = list.filter(a => a.status === 'Selesai').length;
+  const columns = [
+    { h: 'No', x: 30, w: 22, key: a => String(a.n) },
+    { h: 'Tanggal', x: 54, w: 73, key: a => fmtTanggal(a.tanggal) },
+    { h: 'Kegiatan', x: 129, w: 178, key: a => a.namaKegiatan },
+    { h: 'Kategori', x: 309, w: 118, key: a => a.kategori },
+    { h: 'Jam', x: 429, w: 48, key: a => fmtHM(a.jamMulai) },
+    { h: 'Lokasi', x: 479, w: 145, key: a => a.lokasi || '-' },
+    { h: 'Status', x: 626, w: 64, key: a => statusTampil(a) }
+  ];
+  const chars = [3, 12, 28, 18, 7, 24, 11];
+  const pages = [], page = () => {
+    const cmds = ['0.06 0.35 0.33 rg', 'BT /F1 15 Tf 30 560 Td (LAPORAN AKTIVITAS BIDAN) Tj ET',
+      '0 g', 'BT /F1 9 Tf 30 542 Td (Periode: ' + pdfAscii(period) + ') Tj ET',
+      'BT /F1 8 Tf 30 530 Td (Nama: ' + pdfAscii(s.namaBidan || '-') + ' | Puskesmas: ' + pdfAscii(s.namaPuskesmas || '-') + ' | Desa: ' + pdfAscii(s.namaDesa || '-') + ') Tj ET',
+      'BT /F1 8 Tf 30 518 Td (Total kegiatan: ' + list.length + ' | Selesai: ' + done + ' | Piket: ' + laporanPiket().length + ' | Dibuat: ' + pdfAscii(new Date().toLocaleString('id-ID')) + ') Tj ET',
+      '0.06 0.35 0.33 rg', '30 500 662 15 re f', '1 1 1 rg'];
+    columns.forEach(c => cmds.push('BT /F1 7 Tf ' + c.x + ' 505 Td (' + c.h + ') Tj ET'));
+    return { cmds, y: 491 };
+  };
+  let current = page(); pages.push(current);
+  list.forEach((item, index) => {
+    const row = { ...item, n: index + 1 };
+    const cells = columns.map((c, i) => pdfWrap(c.key(row), chars[i]));
+    const height = Math.max(...cells.map(c => c.length)) * 9 + 6;
+    if (current.y - height < 35) { current = page(); pages.push(current); }
+    current.cmds.push('0.84 G 30 ' + (current.y - height + 3) + ' m 692 ' + (current.y - height + 3) + ' l S', '0 g');
+    cells.forEach((lines, i) => lines.forEach((line, n) => current.cmds.push('BT /F1 7 Tf ' + columns[i].x + ' ' + (current.y - 8 - n * 9) + ' Td (' + pdfAscii(line) + ') Tj ET')));
+    current.y -= height;
+  });
+  const objects = [], pageRefs = pages.map((_, i) => (5 + i * 2) + ' 0 R').join(' ');
+  objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objects[2] = '<< /Type /Pages /Kids [' + pageRefs + '] /Count ' + pages.length + ' >>';
+  objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+  pages.forEach((p, i) => {
+    const contentId = 4 + i * 2, pageId = contentId + 1, stream = p.cmds.join('\n');
+    objects[contentId] = '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream';
+    objects[pageId] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 3 0 R >> >> /Contents ' + contentId + ' 0 R >>';
+  });
+  let pdf = '%PDF-1.4\n% report\n', offsets = [0];
+  for (let i = 1; i < objects.length; i++) { offsets[i] = pdf.length; pdf += i + ' 0 obj\n' + objects[i] + '\nendobj\n'; }
+  const xref = pdf.length;
+  pdf += 'xref\n0 ' + objects.length + '\n0000000000 65535 f \n';
+  for (let i = 1; i < objects.length; i++) pdf += String(offsets[i]).padStart(10, '0') + ' 00000 n \n';
+  pdf += 'trailer\n<< /Size ' + objects.length + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF';
+  downloadBlob(new Blob([pdf], { type: 'application/pdf' }), 'laporan-bidan-' + todayKey() + '.pdf');
+  toast('⬇️ Laporan PDF diunduh', 'success');
+  Store.log('Unduh PDF', 'Periode ' + period);
 }
 
 function downloadBlob(blob, nama) {
@@ -1840,21 +1972,12 @@ function renderPengaturan() {
   </div>
 
   <div class="tab-pane ${_tabAktif === 'umum' ? 'active' : ''}" id="tab-umum">
-    ${!State.unlocked ? `
-    <div class="card" style="text-align:center;padding:28px 20px">
-      <div style="font-size:42px;margin-bottom:8px">🔒</div>
-      <h4 class="mb-8">Pengaturan Umum Terkunci</h4>
-      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Profil, kata sandi, dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Tab lain (Telegram, Master Data, Shift, Sinkronisasi) bebas diakses tanpa kata sandi.</p>
-      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
-    </div>
-    ` : `
     <div class="card mb-16">
       <div class="card-title">👤 Profil Bidan</div>
       <div class="form-grid">
         <div class="field"><label>Nama Bidan</label><input class="input" id="u-nama" value="${escapeHtml(s.namaBidan)}"></div>
         <div class="field"><label>Nama Puskesmas</label><input class="input" id="u-puskesmas" value="${escapeHtml(s.namaPuskesmas)}"></div>
         <div class="field"><label>Nama Desa</label><input class="input" id="u-desa" value="${escapeHtml(s.namaDesa)}"></div>
-        <div class="field"><label>Kata Sandi Login</label><input class="input" id="u-password" value="${escapeHtml(s.password)}"></div>
         <div class="field"><label>Tema</label>
           ${DD.render('set-tema', [{ v: 'light', l: 'Terang ☀️' }, { v: 'dark', l: 'Gelap 🌙' }, { v: 'system', l: 'Ikuti Sistem' }], s.tema)}
         </div>
@@ -1867,7 +1990,24 @@ function renderPengaturan() {
         <button class="btn btn-soft btn-sm" id="btn-request-notif" data-action="request-notif">🔔 Aktifkan Notifikasi Browser</button>
         <span class="muted small" id="notif-perm-status"></span>
       </div>
-      <button class="btn btn-primary mt-8" data-action="save-umum">💾 Simpan Pengaturan Umum</button>
+
+    </div>
+
+    ${!State.unlocked ? `
+    <div class="card" style="text-align:center;padding:28px 20px">
+      <div style="font-size:42px;margin-bottom:8px">🔒</div>
+      <h4 class="mb-8">Kata Sandi & Koneksi Database Terkunci</h4>
+      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Kata sandi login dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Profil, foto, logo, dan tab lain bebas diakses tanpa kata sandi.</p>
+      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
+    </div>
+    ` : `
+    <div class="card mb-16">
+      <div class="card-title">🔐 ${s.password ? 'Ubah Kata Sandi' : 'Buat Kata Sandi'}</div>
+      <p class="small muted mb-12">${s.password ? 'Kosongkan kedua kolom bila tidak ingin mengubah kata sandi.' : 'Buat kata sandi untuk melindungi pengaturan koneksi.'}</p>
+      <div class="form-grid">
+        <div class="field"><label>${s.password ? 'Kata Sandi Baru' : 'Kata Sandi'}</label><input type="password" class="input" id="u-password-new" autocomplete="new-password" placeholder="Minimal 6 karakter"></div>
+        <div class="field"><label>Konfirmasi Kata Sandi</label><input type="password" class="input" id="u-password-confirm" autocomplete="new-password" placeholder="Ketik ulang kata sandi"></div>
+      </div>
     </div>
 
     <div class="card mb-16">
@@ -1879,17 +2019,18 @@ function renderPengaturan() {
       </div>
       <p class="small muted mb-12">💡 Panduan lengkap koneksi: buka file <b>README.md</b> di repositori, atau file <b>gas/Code.gs</b> untuk skrip backend Google Apps Script.</p>
       <div class="flex flex-wrap">
-        <button class="btn btn-primary" data-action="save-db">💾 Simpan</button>
         <button class="btn btn-soft" data-action="conn-test">🔌 Uji Koneksi</button>
         <button class="btn btn-soft" data-action="db-reset">🗑️ Reset (hapus cache lokal)</button>
       </div>
-      <div class="flex flex-wrap mt-8">
-        <button class="btn btn-soft btn-sm" data-action="copy-koneksi">📋 Salin Pengaturan Koneksi</button>
-        <button class="btn btn-soft btn-sm" data-action="paste-koneksi">📥 Tempel Pengaturan Koneksi</button>
-      </div>
-      <p class="small muted mt-8">💡 <b>Cara cepat pindah koneksi antar perangkat:</b> di perangkat yang sudah terhubung, klik <b>Salin Pengaturan Koneksi</b> → kirim teksnya ke HP lain (WhatsApp) → di HP klik <b>Tempel Pengaturan Koneksi</b> → Terapkan. Tidak perlu mengetik ulang.</p>
+
     </div>
     `}
+    ${State.unlocked ? `
+    <div class="flex flex-wrap" style="justify-content:flex-end">
+      <button class="btn btn-soft" data-action="logout-settings">🔒 Keluar dari Pengaturan</button>
+      <button class="btn btn-primary" data-action="save-umum">💾 Simpan Pengaturan</button>
+    </div>` : ''}
+
   </div>
 
   <div class="tab-pane ${_tabAktif === 'telegram' ? 'active' : ''}" id="tab-telegram">
@@ -1968,33 +2109,35 @@ async function savePengaturanUmum() {
   s.namaBidan = $('#u-nama').value.trim() || 'Bidan';
   s.namaPuskesmas = $('#u-puskesmas').value.trim();
   s.namaDesa = $('#u-desa').value.trim();
-  s.password = $('#u-password').value.trim() || 'bidan123';
-  cacheSettings();
-  try { await Store.saveSettings({ namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, password: s.password }); }
-  catch (e) { queueAdd({ action: 'saveSettings', settings: { namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, password: s.password } }); }
-  toast('✅ Pengaturan umum disimpan', 'success');
-  Store.log('Ubah pengaturan umum', '');
-  renderSidebarUser();
-  renderDashboard();
-}
 
-async function saveKoneksiDb() {
-  const s = State.settings;
-  s.spreadsheetId = $('#d-spreadsheet').value.trim();
-  s.gasUrl = $('#d-gas').value.trim();
-  s.sheets = {
-    agenda: $('#d-sheet-agenda').value.trim() || 'Agenda',
-    piket: $('#d-sheet-piket').value.trim() || 'JadwalPiket',
-    master: $('#d-sheet-master').value.trim() || 'MasterKegiatan',
-    settings: $('#d-sheet-settings').value.trim() || 'Pengaturan',
-    log: $('#d-sheet-log').value.trim() || 'LogAktivitas',
-  };
-  cacheSettings();
-  if (!isDemoMode()) {
-    try { await Store.saveSettings({ spreadsheetId: s.spreadsheetId, gasUrl: s.gasUrl, sheets: s.sheets }); }
-    catch (e) { toast('⚠️ Simpan ke server gagal — tersimpan lokal', 'warn'); }
+  // Field berikut hanya ada setelah bagian sensitif dibuka.
+  if (State.unlocked && $('#d-gas')) {
+    const passBaru = $('#u-password-new').value;
+    const konfirmasi = $('#u-password-confirm').value;
+    if (passBaru || konfirmasi || !s.password) {
+      if (passBaru.length < 6) { toast('Kata sandi minimal 6 karakter', 'error'); return; }
+      if (passBaru !== konfirmasi) { toast('Konfirmasi kata sandi belum sama', 'error'); return; }
+      s.password = passBaru;
+      State._pwd = passBaru;
+    }
+    s.spreadsheetId = $('#d-spreadsheet').value.trim();
+    s.gasUrl = $('#d-gas').value.trim();
+    s.sheets = {
+      agenda: $('#d-sheet-agenda').value.trim() || 'Agenda',
+      piket: $('#d-sheet-piket').value.trim() || 'JadwalPiket',
+      master: $('#d-sheet-master').value.trim() || 'MasterKegiatan',
+      settings: $('#d-sheet-settings').value.trim() || 'Pengaturan',
+      log: $('#d-sheet-log').value.trim() || 'LogAktivitas',
+    };
   }
-  toast('✅ Koneksi database disimpan', 'success');
+  cacheSettings();
+  const payload = { namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, tema: s.tema };
+  if (State.unlocked) Object.assign(payload, { spreadsheetId: s.spreadsheetId, gasUrl: s.gasUrl, sheets: s.sheets, password: s.password });
+  try { await Store.saveSettings(payload); }
+  catch (e) { queueAdd({ action: 'saveSettings', settings: payload }); }
+  toast('✅ Pengaturan disimpan', 'success');
+  Store.log('Ubah pengaturan', '');
+  renderSidebarUser();
   renderPengaturan();
 }
 
@@ -2018,157 +2161,6 @@ async function testKoneksi(btn) {
   }
 }
 
-/* Salin / tempel pengaturan koneksi antar perangkat (karena koneksi
-   tersimpan per perangkat di localStorage) */
-function koneksiConfig() {
-  return {
-    spreadsheetId: State.settings.spreadsheetId || '',
-    gasUrl: State.settings.gasUrl || '',
-    sheets: State.settings.sheets || {},
-  };
-}
-
-function copyKoneksi() {
-  // Jaga-jaga: di perangkat yang belum terhubung tidak ada yang bisa disalin
-  if (!State.settings.gasUrl) {
-    toast('ℹ️ Perangkat ini belum terhubung — tidak ada pengaturan untuk disalin. Gunakan "📥 Tempel Pengaturan Koneksi" dari perangkat yang sudah terhubung.', 'warn', 5000);
-    return;
-  }
-  const txt = JSON.stringify(koneksiConfig());
-  openModal(`
-    <div class="field"><label><b>1.</b> Tampilkan QR ini di layar, lalu pindai dari HP lain (atau salin teks di bawah).</label>
-    <div style="text-align:center;background:var(--surface-2);border-radius:14px;padding:14px;margin-bottom:10px">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(txt)}" alt="QR Pengaturan Koneksi" style="width:200px;height:200px;margin:0 auto;border-radius:12px">
-      <div class="small muted mt-8">Di HP lain: Pengaturan → Umum → 📥 Tempel Pengaturan Koneksi → 📷 Scan QR</div>
-    </div></div>
-    <div class="field"><label><b>2.</b> Alternatif: salin teks di bawah (tekan lama pada teks → <b>Salin</b>):</label>
-    <textarea class="input" id="cfg-copy" readonly style="min-height:110px;font-size:12px">${escapeHtml(txt)}</textarea></div>
-    <div class="modal-foot">
-      <button type="button" class="btn btn-soft" data-action="modal-close">Tutup</button>
-      <button type="button" class="btn btn-primary" data-action="copy-cfg-btn">📋 Salin ke Clipboard</button>
-    </div>`, { title: '📋 Salin Pengaturan Koneksi' });
-  const ta = $('#cfg-copy');
-  setTimeout(() => { try { ta.focus(); ta.select(); } catch (e) { /* abaikan */ } }, 150);
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt)
-      .then(() => toast('✅ Teks tersalin otomatis — tempel di perangkat lain', 'success'))
-      .catch(() => toast('⚠️ Salin manual: tekan lama pada teks → Salin', 'warn'));
-  } else {
-    toast('💡 Pilih teks lalu salin, atau gunakan tombol Scan QR di perangkat lain', 'info');
-  }
-}
-
-function pasteKoneksi() {
-  openModal(`
-    <div class="card mb-12" style="background:var(--surface-2);text-align:center;padding:12px">
-      <div class="small muted mb-8">📷 <b>Paling mudah:</b> tampilkan QR "Salin Pengaturan Koneksi" di layar perangkat lain (komputer/HP yang sudah terhubung), lalu pindai di sini</div>
-      <video id="qr-video" playsinline muted style="width:100%;max-height:170px;border-radius:12px;background:#000;display:none"></video>
-      <div class="flex mt-8" style="justify-content:center;gap:8px">
-        <button type="button" class="btn btn-primary btn-sm" data-action="qr-scan">📷 Scan QR</button>
-        <button type="button" class="btn btn-soft btn-sm hidden" data-action="qr-stop">⏹ Hentikan</button>
-      </div>
-    </div>
-    <div class="field"><label>Atau tempel teks pengaturan (tekan lama pada kotak → <b>Tempel</b>):</label>
-    <textarea class="input" id="cfg-paste" placeholder='{"spreadsheetId":"...","gasUrl":"https://script.google.com/macros/s/.../exec"}' style="min-height:110px;font-size:12px"></textarea></div>
-    <p class="login-error hidden" id="cfg-err"></p>
-    <div class="modal-foot">
-      <button type="button" class="btn btn-soft" data-action="modal-close">Batal</button>
-      <button type="button" class="btn btn-primary" data-action="cfg-apply">✅ Terapkan</button>
-    </div>`, { title: '📥 Tempel Pengaturan Koneksi' });
-}
-
-/* ----- Pindai QR pengaturan (Chrome Android: BarcodeDetector) ----- */
-function stopQR() {
-  const video = $('#qr-video');
-  if (video && video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
-    video.srcObject = null;
-    video.style.display = 'none';
-  }
-  const stopBtn = $('[data-action="qr-stop"]');
-  if (stopBtn) stopBtn.classList.add('hidden');
-  const scanBtn = $('[data-action="qr-scan"]');
-  if (scanBtn) scanBtn.classList.remove('hidden');
-}
-
-async function scanQR() {
-  const er = $('#cfg-err');
-  if (er) er.classList.add('hidden');
-  if (!('BarcodeDetector' in window)) {
-    if (er) { er.textContent = 'Browser ini tidak mendukung pemindai QR. Gunakan Chrome di Android, atau tempel teks secara manual.'; er.classList.remove('hidden'); }
-    return;
-  }
-  const video = $('#qr-video');
-  const stopBtn = $('[data-action="qr-stop"]');
-  const scanBtn = $('[data-action="qr-scan"]');
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    video.srcObject = stream;
-    video.style.display = 'block';
-    await video.play();
-    if (scanBtn) scanBtn.classList.add('hidden');
-    if (stopBtn) stopBtn.classList.remove('hidden');
-    const detector = new BarcodeDetector({ formats: ['qr_code'] });
-    for (let i = 0; i < 75; i++) { // ~30 detik
-      try {
-        const codes = await detector.detect(video);
-        if (codes.length) {
-          const txt = codes[0].rawValue;
-          let cfg = null;
-          try { cfg = JSON.parse(txt); } catch (e) {
-            const m = txt.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+/);
-            if (m) cfg = { gasUrl: m[0] };
-          }
-          if (cfg && cfg.gasUrl) {
-            stopQR();
-            const ta = $('#cfg-paste');
-            if (ta) ta.value = JSON.stringify(cfg);
-            toast('✅ QR terbaca — tekan "Terapkan"', 'success');
-            return;
-          }
-        }
-      } catch (e) { /* bingkai belum siap */ }
-      await sleep(400);
-    }
-    stopQR();
-    if (er) { er.textContent = 'QR tidak terdeteksi. Pastikan QR tampil utuh & cahaya cukup.'; er.classList.remove('hidden'); }
-  } catch (err) {
-    stopQR();
-    if (er) { er.textContent = 'Kamera tidak dapat diakses: ' + (err.message || err) + '. Gunakan tempel teks manual.'; er.classList.remove('hidden'); }
-  }
-}
-
-async function applyKoneksi() {
-  const raw = (($('#cfg-paste') || {}).value || '').trim();
-  const er = $('#cfg-err');
-  let cfg = null;
-  try { cfg = JSON.parse(raw); }
-  catch (e) {
-    // kemungkinan bukan JSON utuh — coba deteksi URL telanjang
-    const m = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[^\s"']+/);
-    if (m) cfg = { gasUrl: m[0] };
-  }
-  if (!cfg || typeof cfg !== 'object') {
-    if (er) { er.textContent = 'Teks tidak dikenali. Pastikan teks utuh mulai { sampai } (lihat panduan di menu Salin).'; er.classList.remove('hidden'); }
-    return;
-  }
-  const gasUrl = String(cfg.gasUrl || '').trim();
-  if (!gasUrl) {
-    if (er) { er.textContent = 'URL Web App kosong. Periksa kembali teks yang disalin.'; er.classList.remove('hidden'); }
-    return;
-  }
-  // terapkan
-  State.settings.gasUrl = gasUrl;
-  if (cfg.spreadsheetId) State.settings.spreadsheetId = String(cfg.spreadsheetId).trim();
-  if (cfg.sheets && typeof cfg.sheets === 'object') State.settings.sheets = { ...State.settings.sheets, ...cfg.sheets };
-  cacheSettings();
-  closeModal();
-  toast('✅ Pengaturan diterapkan — menyinkronkan…', 'success');
-  try { await Store.saveSettings({ spreadsheetId: State.settings.spreadsheetId, gasUrl, sheets: State.settings.sheets }); } catch (e) { /* simpan lokal cukup */ }
-  const ok = await syncAll({ silent: false });
-  if (ok) toast('🎉 Terhubung! Data dari Spreadsheet dimuat', 'success');
-  else toast('⚠️ Koneksi tersimpan, tetapi tidak bisa menjangkau server. Periksa URL Web App & internet.', 'warn', 5000);
-}
 
 function resetCacheLocal() {
   confirmDialog('Hapus seluruh cache & data lokal aplikasi? <b class="muted">(Data di Spreadsheet aman)</b>', { danger: true, title: 'Reset Cache', yesText: 'Ya, bersihkan' }).then(ok => {
@@ -2270,7 +2262,7 @@ function renderTentang() {
   const el = $('#view-tentang');
   el.innerHTML = `
   <div class="card mb-16" style="text-align:center;padding:32px 20px">
-    <img src="./icon-192.png?v=4" alt="Logo" style="width:92px;height:92px;margin:0 auto 14px;border-radius:24px;box-shadow:var(--shadow)">
+    <img src="./icon-192.png" alt="Logo" style="width:92px;height:92px;margin:0 auto 14px;border-radius:24px;box-shadow:var(--shadow)">
     <h2 style="font-size:19px">${APP.nama}</h2>
     <p class="muted small">Versi ${APP.versi} • ${APP.tahun}</p>
     <p class="small mt-8" style="max-width:480px;margin:10px auto 0">Aplikasi PWA untuk agenda kerja harian, agenda bulanan, jadwal piket, dokumentasi kegiatan, dan laporan aktivitas Bidan — tanpa framework, ringan, dan dapat diinstal di Android.</p>
@@ -2398,19 +2390,33 @@ async function syncAll(opts = {}) {
     const d = await Store.getAll();
     setProgress(60);
     if (d.settings && typeof d.settings === 'object') {
+      // Foto profil & logo bersifat lokal per perangkat (base64-nya terlalu besar
+      // untuk disimpan di sel Spreadsheet). Jangan biarkan hasil sync menimpanya
+      // dengan nilai kosong dari server — itu penyebab foto profil "hilang" /
+      // balik ke default tiap kali refresh atau sinkron ulang.
+      const localFoto = State.settings.fotoProfil;
+      const localLogo = State.settings.logo;
       State.settings = { ...State.settings, ...d.settings, sheets: { ...State.settings.sheets, ...(d.settings.sheets || {}) } };
+      if (!d.settings.fotoProfil) State.settings.fotoProfil = localFoto;
+      if (!d.settings.logo) State.settings.logo = localLogo;
       cacheSettings();
     }
-    State.agenda = d.agenda || [];
+    // Jaring pengaman: kalau ada agenda dengan foto lokal yang belum berhasil
+    // tersimpan ke server (mis. masih dalam antrian retry), jangan sampai hilang
+    // saat penggantian data agenda dari hasil sync ini.
+    const fotoLokalMap = {};
+    State.agenda.forEach(a => { if (a.foto) fotoLokalMap[a.id] = a.foto; });
+    State.agenda = (d.agenda || []).map(a => (!a.foto && fotoLokalMap[a.id]) ? { ...a, foto: fotoLokalMap[a.id] } : a);
     State.piket = d.piket || [];
     State.master = d.master || [];
     State.log = d.log || [];
     cacheData();
     State.lastSync = Date.now();
     lsSet(K.s_syncts, new Date().toLocaleString('id-ID'));
+    renderSidebarUser();
     State.offline = false;
     $('#offline-banner').classList.add('hidden');
-    await flushQueue({ interactive: !opts.silent });
+    await flushQueue();
     setProgress(100);
     if (!opts.silent) toast('📡 Data tersinkron dari ' + (isDemoMode() ? 'cache lokal' : 'Spreadsheet'), 'success');
     renderCurrentView();
@@ -2437,38 +2443,14 @@ async function syncAll(opts = {}) {
    error server) TETAP disimpan di antrian dan dicoba lagi lain kali —
    sebelumnya queueClear() dipanggil tanpa syarat sehingga operasi yang
    gagal ikut terhapus permanen dan datanya tidak pernah sampai ke
-   Spreadsheet meski tampilan lokal sudah menganggapnya selesai.
-
-   Catatan kata sandi: aksi sensitif (hapus data, master, pengaturan)
-   butuh kata sandi sesi. Bila sesi terkunci (mis. aplikasi baru dibuka
-   ulang), operasi itu pasti ditolak server — sebelumnya toast
-   "operasi belum terkirim" muncul terus tanpa penjelasan. Sekarang:
-   saat sinkron interaktif (user menekan 🔄 / tarik-refresh) sekali per
-   sesi diminta kata sandi; saat silent-sync cukup diperingatkan 1x. */
-function queueSensitive(q) {
-  return q.filter(op => ['deleteAgenda', 'deletePiket', 'saveMaster', 'deleteMaster', 'saveSettings'].includes(op.action));
-}
-function opNeedPwd(op) {
-  return ['deleteAgenda', 'deletePiket', 'saveMaster', 'deleteMaster', 'saveSettings'].includes(op.action);
-}
-
-async function flushQueue(opts = {}) {
+   Spreadsheet meski tampilan lokal sudah menganggapnya selesai. */
+async function flushQueue() {
   const q = queueAll();
   if (!q.length) return;
   setProgress(30);
-
-  // Bila ada aksi sensitif & sesi terkunci: minta kata sandi SEKALI per sesi
-  // (hanya saat sinkron dipicu langsung oleh pengguna).
-  if (opts.interactive && !State._pwd && !State._pwdPrompted && queueSensitive(q).length) {
-    State._pwdPrompted = true;
-    toast('🔐 Beberapa operasi tertunda perlu kata sandi untuk dikirim', 'info', 3600);
-    await requirePassword();
-  }
-
-  let ok = 0, needPwd = 0;
+  let ok = 0;
   const sisa = [];
   for (const op of q) {
-    if (opNeedPwd(op) && !State._pwd) { sisa.push(op); needPwd++; continue; }
     try {
       if (op.action === 'saveAgenda') await Store.saveAgenda(op.item);
       else if (op.action === 'deleteAgenda') await Store.deleteAgenda(op.id);
@@ -2481,18 +2463,8 @@ async function flushQueue(opts = {}) {
     } catch (e) { sisa.push(op); /* tetap di antrian, coba lagi lain kali */ }
   }
   if (sisa.length) lsSet(K.s_queue, sisa); else queueClear();
-  const qc = $('#queue-count');
-  if (qc) qc.textContent = String(sisa.length);
   if (ok) toast('📤 ' + ok + ' operasi offline berhasil dikirim', 'success');
-  if (needPwd) {
-    // Jangan spam toast saat sinkron latar: cukup sekali per sesi
-    if (opts.interactive || !State._pwdToastShown) {
-      State._pwdToastShown = true;
-      toast('🔐 ' + needPwd + ' operasi tertunda perlu kata sandi — buka Pengaturan → Umum (masukkan kata sandi), lalu ketuk 🔄 Sinkronkan', 'warn', 6500);
-    }
-  } else if (sisa.length) {
-    toast('⚠️ ' + sisa.length + ' operasi belum terkirim, akan dicoba lagi', 'warn');
-  }
+  if (sisa.length) toast('⚠️ ' + sisa.length + ' operasi belum terkirim, akan dicoba lagi', 'warn');
 }
 
 /* Pindahkan data yang tersimpan di mode demo (perangkat) ke Spreadsheet */
@@ -2572,6 +2544,10 @@ function renderSidebarUser() {
   $('#side-name').textContent = s.namaBidan || 'Bidan';
   $('#side-place').textContent = (s.namaPuskesmas || 'Puskesmas') + ' • ' + (s.namaDesa || '');
   $('#sidebar-sub').textContent = isDemoMode() ? 'Mode Demo' : 'Manajemen Kegiatan';
+  const syncInfo = $('#side-sync');
+  if (syncInfo) syncInfo.textContent = State.lastSync
+    ? '🔄 Sinkron terakhir: ' + new Date(State.lastSync).toLocaleString('id-ID')
+    : '🔄 Belum disinkronkan';
 }
 
 function openNotifs() {
@@ -2654,6 +2630,7 @@ function handleClick(e) {
       break;
     }
     case 'lock': lockApp(); break;
+    case 'logout-settings': lockApp(); break;
     case 'toggle-sidebar': ($('#sidebar').classList.contains('open') || document.body.classList.contains('sidebar-mobile-open')) ? closeSidebar() : openSidebar(); break;
     case 'open-notifs': openNotifs(); break;
     case 'close-notifs': closeNotifs(); break;
@@ -2719,14 +2696,6 @@ function handleClick(e) {
     case 'master-del': deleteMaster(id); break;
     case 'go-koneksi': _tabAktif = 'umum'; navigate('pengaturan'); break;
     case 'migrate-demo': migrateDemoData(); break;
-    case 'copy-koneksi': copyKoneksi(); break;
-    case 'paste-koneksi': pasteKoneksi(); break;
-    case 'copy-cfg-btn': {
-      const ta = $('#cfg-copy');
-      if (ta) { ta.focus(); ta.select(); try { document.execCommand('copy'); toast('✅ Tersalin — tempel di HP lain', 'success'); } catch (e2) { toast('Salin manual: pilih teks, lalu salin', 'warn'); } }
-      break;
-    }
-    case 'cfg-apply': applyKoneksi(); break;
     case 'unlock-umum': requirePassword().then(ok => { if (ok) renderPengaturan(); }); break;
 
     case 'tab-set':
@@ -2735,7 +2704,6 @@ function handleClick(e) {
       } else { _tabAktif = val; renderPengaturan(); }
       break;
     case 'save-umum': savePengaturanUmum(); break;
-    case 'save-db': saveKoneksiDb(); break;
     case 'conn-test': testKoneksi(el); break;
     case 'db-reset': resetCacheLocal(); break;
     case 'save-tg': saveTelegram(); break;
@@ -2802,7 +2770,9 @@ function handleClick(e) {
       }
       break;
     case 'sync-clear': resetCacheLocal(); break;
+    case 'laporan-apply': applyLaporanFilter(); break;
     case 'export-print': exportPrint(); break;
+    case 'export-pdf': exportPDF(); break;
     case 'export-excel': exportExcel(); break;
 
     /* ===== FASE 1 NEW HANDLERS ===== */
@@ -2837,6 +2807,7 @@ function handleChange(e) {
   else if (id === 'agenda-status') { State.agendaFilter.status = val; renderAgendaList(); }
   else if (id === 'set-tema') { State.settings.tema = val; applyTheme(); }
   else if (id === 'laporan-month') { State.laporanMonth = val || State.laporanMonth; renderLaporan(); }
+  else if (id === 'lap-scope') { State.laporanFilter.scope = val; renderLaporan(); }
   else if (id === 'import-file') { handleImportFile(e); }
   else if (id === 'u-foto-file') {
     const f = t.files[0];
@@ -2851,112 +2822,8 @@ function handleChange(e) {
 function handleInput(e) {
   const t = e.target;
   if (t.id === 'agenda-search') { State.agendaFilter.q = t.value; debouncedAgendaList(); }
-  if (t.id === 'global-search-input') { handleGlobalSearchInput(t.value); }
 }
 const debouncedAgendaList = debounce(renderAgendaList, 250);
-
-/* ==================== FASE 1: GLOBAL SEARCH ==================== */
-let _globalSearchTimeout = null;
-
-function handleGlobalSearchInput(query) {
-  clearTimeout(_globalSearchTimeout);
-  _globalSearchTimeout = setTimeout(() => {
-    if (!query || query.length < 2) return;
-    performGlobalSearch(query.trim());
-  }, 260);
-}
-
-function performGlobalSearch(query) {
-  const q = query.toLowerCase();
-  const results = { agenda: [], piket: [], master: [] };
-
-  State.agenda.forEach(a => {
-    const text = ((a.namaKegiatan||'') + ' ' + (a.lokasi||'') + ' ' + (a.keterangan||'') + ' ' + (a.sasaran||'') + ' ' + (a.kategori||'')).toLowerCase();
-    if (text.includes(q)) results.agenda.push(a);
-  });
-
-  State.piket.forEach(p => {
-    const text = (p.shift + ' ' + (p.catatan||'') + ' ' + fmtTanggal(p.tanggal)).toLowerCase();
-    if (text.includes(q)) results.piket.push(p);
-  });
-
-  State.master.forEach(m => {
-    const text = ((m.nama||'') + ' ' + (m.kategori||'') + ' ' + (m.lokasiDefault||'') + ' ' + (m.sasaranDefault||'')).toLowerCase();
-    if (text.includes(q)) results.master.push(m);
-  });
-
-  showGlobalSearchResults(query, results);
-}
-
-function showGlobalSearchResults(query, results) {
-  const total = results.agenda.length + results.piket.length + results.master.length;
-  if (total === 0) {
-    toast('Tidak ada hasil untuk "' + query + '"', 'info');
-    const inp = $('#global-search-input'); if (inp) inp.value = '';
-    return;
-  }
-
-  // Clear search input after showing results
-  setTimeout(() => {
-    const inp = $('#global-search-input');
-    if (inp) inp.value = '';
-  }, 600);
-
-  let html = `<div class="global-results">`;
-
-  if (results.agenda.length) {
-    html += `<div class="global-result-group"><h5>📋 Agenda (${results.agenda.length})</h5>`;
-    results.agenda.slice(0, 6).forEach(a => {
-      html += `
-        <div class="global-result-item" data-action="global-open-agenda" data-id="${a.id}">
-          <div class="result-icon" style="background:${(KATEGORI[a.kategori]||'#14B8A6')}22">📅</div>
-          <div class="result-text">
-            <div class="result-title">${escapeHtml(a.namaKegiatan)}</div>
-            <div class="result-meta">${fmtTanggal(a.tanggal)} • ${statusTampil(a)} • ${escapeHtml(a.lokasi||'')}</div>
-          </div>
-        </div>`;
-    });
-    html += `</div>`;
-  }
-
-  if (results.piket.length) {
-    html += `<div class="global-result-group"><h5>🕐 Piket (${results.piket.length})</h5>`;
-    results.piket.slice(0, 4).forEach(p => {
-      const meta = SHIFT_META(p.shift);
-      html += `
-        <div class="global-result-item" data-action="global-open-piket" data-val="${p.tanggal}">
-          <div class="result-icon" style="background:${meta.warna}22">${meta.ikon}</div>
-          <div class="result-text">
-            <div class="result-title">Shift ${meta.label} • ${fmtTanggal(p.tanggal)}</div>
-            <div class="result-meta">${escapeHtml(p.catatan || 'Tidak ada catatan')}</div>
-          </div>
-        </div>`;
-    });
-    html += `</div>`;
-  }
-
-  if (results.master.length) {
-    html += `<div class="global-result-group"><h5>🗂️ Master Kegiatan (${results.master.length})</h5>`;
-    results.master.slice(0, 6).forEach(m => {
-      html += `
-        <div class="global-result-item" data-action="global-create-from-master" data-id="${m.id}">
-          <div class="result-icon" style="background:${m.warna||'#14B8A6'}22">${m.ikon || '📋'}</div>
-          <div class="result-text">
-            <div class="result-title">${escapeHtml(m.nama)}</div>
-            <div class="result-meta">${escapeHtml(m.kategori)} • ${escapeHtml(m.lokasiDefault || '')}</div>
-          </div>
-        </div>`;
-    });
-    html += `</div>`;
-  }
-
-  html += `</div>`;
-
-  openModal(html, { 
-    title: `🔍 Hasil pencarian: "${escapeHtml(query)}" (${total})`,
-    style: 'max-width:520px'
-  });
-}
 
 /* ==================== FASE 1: QUICK TEMPLATES ==================== */
 function renderQuickTemplates() {

@@ -7,12 +7,11 @@
   <meta name="theme-color" id="meta-theme" content="#0F766E">
   <title>Agenda &amp; Manajemen Kegiatan Bidan</title>
 
-  <!-- PWA (parameter v=4 memaksa perangkat mengambil ikon/manifest terbaru,
-       mengabaikan salinan lama yang tersimpan di cache service worker) -->
-  <link rel="manifest" href="./manifest.webmanifest?v=4">
-  <link rel="icon" type="image/png" href="./favicon.png?v=4">
-  <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png?v=4">
-  <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png?v=4">
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" href="./favicon.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -28,7 +27,7 @@
     <!-- Sidebar (desktop) -->
     <aside id="sidebar" class="sidebar" aria-label="Menu utama">
       <div class="sidebar-brand">
-        <img src="./icon-192.png?v=4" alt="Logo" class="brand-logo">
+        <img src="./icon-192.png" alt="Logo" class="brand-logo">
         <div class="brand-text">
           <strong>Agenda Bidan</strong>
           <small id="sidebar-sub">Manajemen Kegiatan</small>
@@ -41,12 +40,13 @@
         <a href="#" class="nav-item" data-nav="agenda" data-icon="📋"><span class="nav-ico">📋</span>Agenda</a>
         <a href="#" class="nav-item" data-nav="kalender" data-icon="📅"><span class="nav-ico">📅</span>Kalender</a>
         <a href="#" class="nav-item" data-nav="piket" data-icon="🕐"><span class="nav-ico">🕐</span>Jadwal Piket</a>
-        <a href="#" class="nav-item" data-nav="laporan" data-icon="📊"><span class="nav-ico">📊</span>Laporan</a>
         <a href="#" class="nav-item" data-nav="galeri" data-icon="🖼️"><span class="nav-ico">🖼️</span>Galeri</a>
+        <a href="#" class="nav-item" data-nav="laporan" data-icon="📊"><span class="nav-ico">📊</span>Laporan</a>
         <a href="#" class="nav-item" data-nav="pengaturan" data-icon="⚙️"><span class="nav-ico">⚙️</span>Pengaturan</a>
         <a href="#" class="nav-item" data-nav="tentang" data-icon="ℹ️"><span class="nav-ico">ℹ️</span>Tentang</a>
       </nav>
 
+      <div class="side-sync" id="side-sync" aria-live="polite">🔄 Belum disinkronkan</div>
       <div class="sidebar-foot">
         <div class="side-user">
           <img id="side-avatar" src="" alt="" class="avatar avatar-sm hidden">
@@ -71,12 +71,6 @@
           <span id="view-subtitle" class="topbar-sub"></span>
         </div>
         <div class="topbar-actions">
-          <!-- Global Search (Fase 1) -->
-          <div class="global-search">
-            <span class="gs-icon">🔍</span>
-            <input type="text" id="global-search-input" placeholder="Cari agenda, piket, master..." autocomplete="off">
-          </div>
-
           <button class="icon-btn" data-action="open-notifs" aria-label="Notifikasi" title="Notifikasi">
             🔔<span id="notif-badge" class="badge-dot hidden"></span>
           </button>
@@ -99,9 +93,9 @@
 
         <section id="view-piket" class="view" data-title="Jadwal Piket" data-sub="Pengingat dinas pribadi"></section>
 
-        <section id="view-laporan" class="view" data-title="Laporan" data-sub="Rekap & statistik aktivitas"></section>
-
         <section id="view-galeri" class="view" data-title="Galeri" data-sub="Dokumentasi foto kegiatan"></section>
+
+        <section id="view-laporan" class="view" data-title="Laporan" data-sub="Rekap & statistik aktivitas"></section>
 
         <section id="view-pengaturan" class="view" data-title="Pengaturan" data-sub="Konfigurasi aplikasi"></section>
 
@@ -134,8 +128,8 @@
   <div id="more-sheet" class="sheet hidden">
     <div class="sheet-head"><strong>Menu</strong><button class="icon-btn" data-action="close-more">✕</button></div>
     <div class="sheet-body">
-      <button class="sheet-item" data-nav="laporan"><span class="nav-ico">📊</span> Laporan</button>
       <button class="sheet-item" data-nav="galeri"><span class="nav-ico">🖼️</span> Galeri</button>
+      <button class="sheet-item" data-nav="laporan"><span class="nav-ico">📊</span> Laporan</button>
       <button class="sheet-item" data-nav="pengaturan"><span class="nav-ico">⚙️</span> Pengaturan</button>
       <button class="sheet-item" data-nav="tentang"><span class="nav-ico">ℹ️</span> Tentang</button>
       <button class="sheet-item" data-action="lock"><span class="nav-ico">🔒</span> Kunci Aplikasi</button>
@@ -157,10 +151,6 @@
   <!-- Area cetak (laporan) -->
   <div id="print-area"></div>
 
-  <!-- Fase 2: Modular split (final) -->
-  <script src="./js/constants.js"></script>
-  <script src="./js/utils.js"></script>
-  <script src="./js/backup.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
