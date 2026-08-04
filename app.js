@@ -192,6 +192,8 @@ const State = {
   user: null,
   unlocked: false,        // sesi terbuka setelah kata sandi benar (hanya di memori)
   _pwd: '',               // kata sandi sesi (tidak disimpan permanen)
+  _pwdPrompted: false,    // sudah pernah diminta sandi utk antrian (1x per sesi)
+  _pwdToastShown: false,  // toast "perlu sandi" hanya 1x per sesi saat silent-sync
   offline: false,
   demo: false,            // mode demo (belum ada koneksi GAS)
   currentView: 'dashboard',
@@ -352,10 +354,13 @@ const Store = {
    memerlukan kata sandi karena bersifat dinamis.
    ============================================================ */
 
-/* Minta kata sandi (modal). Menyelesaikan dengan true bila benar. */
+/* Minta kata sandi (modal). Menyelesaikan dengan true bila benar,
+   false bila dibatalkan (supaya pemanggil tidak menggantung). */
 function requirePassword() {
   return new Promise(resolve => {
     if (State.unlocked) { resolve(true); return; }
+    let done = false;
+    const finish = v => { if (!done) { done = true; resolve(v); } };
     openModal(`
       <form id="form-unlock">
         <div class="field">
@@ -374,6 +379,12 @@ function requirePassword() {
       </form>`, { title: '🔒 Kata Sandi Diperlukan' });
     const inp = $('#u-pass');
     inp.focus();
+    // Bila modal ditutup tanpa sukses → anggap dibatalkan
+    const root = $('#modal-root');
+    root.addEventListener('click', e => {
+      const a = e.target.closest('[data-action]');
+      if (a && (a.dataset.action === 'modal-close' || a.dataset.action === 'modal-backdrop')) finish(false);
+    });
     $('#form-unlock').addEventListener('submit', e => {
       e.preventDefault();
       e.stopPropagation(); // jangan sampai handler submit global ikut jalan
@@ -382,7 +393,7 @@ function requirePassword() {
         State._pwd = inp.value;
         closeModal();
         toast('🔓 Terbuka — perubahan data diizinkan', 'success');
-        resolve(true);
+        finish(true);
       } else {
         const er = $('#unlock-error');
         er.textContent = 'Kata sandi salah. Coba lagi.';
@@ -398,6 +409,8 @@ function requirePassword() {
 function lockApp() {
   State.unlocked = false;
   State._pwd = '';
+  State._pwdPrompted = false;
+  State._pwdToastShown = false;
   closeMore(); closeFab(); closeModal();
   if (State.currentView === 'pengaturan') navigate('dashboard');
   toast('🔒 Aplikasi dikunci', 'info');
@@ -681,16 +694,16 @@ function renderDashboard() {
   const nextPiket = sortAgenda(State.piket.map(p => ({ ...p, jamMulai: SHIFT_JAM(p.shift) }))).find(p => p.tanggal > tKey);
   const info = shiftInfo(now);
 
-  const foto = s.fotoProfil ? '<img class="avatar avatar-lg" src="' + s.fotoProfil + '" alt="Foto">' : '<div class="avatar avatar-lg" style="background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:30px">👩‍⚕️</div>';
+  const foto = '<div class="hero-photo">' + (s.fotoProfil ? '<img class="avatar avatar-lg" src="' + s.fotoProfil + '" alt="Foto">' : '<div class="avatar avatar-lg" style="background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:24px">👩‍⚕️</div>') + '</div>';
 
   el.innerHTML = `
   <div class="hero">
+    ${foto}
     <div class="greet">${sapaan()},</div>
     <h1>${escapeHtml(s.namaBidan || 'Bidan')}</h1>
     <div class="hero-row">
       <div class="clock" id="hero-clock">${clockStr()}</div>
       <div class="hero-date">${fmtTanggalPanjang(tKey)}</div>
-      ${foto}
     </div>
     <div class="small" style="opacity:.85;margin-top:10px">🔄 Terakhir sinkron: ${State.lastSync ? new Date(State.lastSync).toLocaleString('id-ID') : '—'} ${isDemoMode() ? '• Mode Demo (lokal)' : '• Spreadsheet'}</div>
   </div>
@@ -2257,7 +2270,7 @@ function renderTentang() {
   const el = $('#view-tentang');
   el.innerHTML = `
   <div class="card mb-16" style="text-align:center;padding:32px 20px">
-    <img src="./icon-192.png" alt="Logo" style="width:92px;height:92px;margin:0 auto 14px;border-radius:24px;box-shadow:var(--shadow)">
+    <img src="./icon-192.png?v=4" alt="Logo" style="width:92px;height:92px;margin:0 auto 14px;border-radius:24px;box-shadow:var(--shadow)">
     <h2 style="font-size:19px">${APP.nama}</h2>
     <p class="muted small">Versi ${APP.versi} • ${APP.tahun}</p>
     <p class="small mt-8" style="max-width:480px;margin:10px auto 0">Aplikasi PWA untuk agenda kerja harian, agenda bulanan, jadwal piket, dokumentasi kegiatan, dan laporan aktivitas Bidan — tanpa framework, ringan, dan dapat diinstal di Android.</p>
@@ -2397,7 +2410,7 @@ async function syncAll(opts = {}) {
     lsSet(K.s_syncts, new Date().toLocaleString('id-ID'));
     State.offline = false;
     $('#offline-banner').classList.add('hidden');
-    await flushQueue();
+    await flushQueue({ interactive: !opts.silent });
     setProgress(100);
     if (!opts.silent) toast('📡 Data tersinkron dari ' + (isDemoMode() ? 'cache lokal' : 'Spreadsheet'), 'success');
     renderCurrentView();
@@ -2424,14 +2437,38 @@ async function syncAll(opts = {}) {
    error server) TETAP disimpan di antrian dan dicoba lagi lain kali —
    sebelumnya queueClear() dipanggil tanpa syarat sehingga operasi yang
    gagal ikut terhapus permanen dan datanya tidak pernah sampai ke
-   Spreadsheet meski tampilan lokal sudah menganggapnya selesai. */
-async function flushQueue() {
+   Spreadsheet meski tampilan lokal sudah menganggapnya selesai.
+
+   Catatan kata sandi: aksi sensitif (hapus data, master, pengaturan)
+   butuh kata sandi sesi. Bila sesi terkunci (mis. aplikasi baru dibuka
+   ulang), operasi itu pasti ditolak server — sebelumnya toast
+   "operasi belum terkirim" muncul terus tanpa penjelasan. Sekarang:
+   saat sinkron interaktif (user menekan 🔄 / tarik-refresh) sekali per
+   sesi diminta kata sandi; saat silent-sync cukup diperingatkan 1x. */
+function queueSensitive(q) {
+  return q.filter(op => ['deleteAgenda', 'deletePiket', 'saveMaster', 'deleteMaster', 'saveSettings'].includes(op.action));
+}
+function opNeedPwd(op) {
+  return ['deleteAgenda', 'deletePiket', 'saveMaster', 'deleteMaster', 'saveSettings'].includes(op.action);
+}
+
+async function flushQueue(opts = {}) {
   const q = queueAll();
   if (!q.length) return;
   setProgress(30);
-  let ok = 0;
+
+  // Bila ada aksi sensitif & sesi terkunci: minta kata sandi SEKALI per sesi
+  // (hanya saat sinkron dipicu langsung oleh pengguna).
+  if (opts.interactive && !State._pwd && !State._pwdPrompted && queueSensitive(q).length) {
+    State._pwdPrompted = true;
+    toast('🔐 Beberapa operasi tertunda perlu kata sandi untuk dikirim', 'info', 3600);
+    await requirePassword();
+  }
+
+  let ok = 0, needPwd = 0;
   const sisa = [];
   for (const op of q) {
+    if (opNeedPwd(op) && !State._pwd) { sisa.push(op); needPwd++; continue; }
     try {
       if (op.action === 'saveAgenda') await Store.saveAgenda(op.item);
       else if (op.action === 'deleteAgenda') await Store.deleteAgenda(op.id);
@@ -2444,8 +2481,18 @@ async function flushQueue() {
     } catch (e) { sisa.push(op); /* tetap di antrian, coba lagi lain kali */ }
   }
   if (sisa.length) lsSet(K.s_queue, sisa); else queueClear();
+  const qc = $('#queue-count');
+  if (qc) qc.textContent = String(sisa.length);
   if (ok) toast('📤 ' + ok + ' operasi offline berhasil dikirim', 'success');
-  if (sisa.length) toast('⚠️ ' + sisa.length + ' operasi belum terkirim, akan dicoba lagi', 'warn');
+  if (needPwd) {
+    // Jangan spam toast saat sinkron latar: cukup sekali per sesi
+    if (opts.interactive || !State._pwdToastShown) {
+      State._pwdToastShown = true;
+      toast('🔐 ' + needPwd + ' operasi tertunda perlu kata sandi — buka Pengaturan → Umum (masukkan kata sandi), lalu ketuk 🔄 Sinkronkan', 'warn', 6500);
+    }
+  } else if (sisa.length) {
+    toast('⚠️ ' + sisa.length + ' operasi belum terkirim, akan dicoba lagi', 'warn');
+  }
 }
 
 /* Pindahkan data yang tersimpan di mode demo (perangkat) ke Spreadsheet */

@@ -311,12 +311,14 @@ textarea.input { min-height: 84px; resize: vertical; }
   box-shadow: var(--shadow);
 }
 .hero::after { content: "🩺"; position: absolute; right: -8px; bottom: -14px; font-size: 92px; opacity: .16; transform: rotate(-12deg); }
-.hero .greet { font-size: 13px; opacity: .85; }
-.hero h1 { font-size: 22px; margin: 2px 0 10px; }
+.hero .greet { font-size: 13px; opacity: .85; padding-right: 74px; }
+.hero h1 { font-size: 22px; margin: 2px 0 10px; padding-right: 74px; }
 .hero .hero-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .hero .clock { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
 .hero .hero-date { font-size: 13px; opacity: .9; }
-.hero .avatar { border: 3px solid rgba(255, 255, 255, .5); margin-left: auto; }
+/* Foto profil melayang di pojok kanan atas hero */
+.hero-photo { position: absolute; top: 14px; right: 14px; z-index: 2; }
+.hero-photo .avatar-lg { width: 56px; height: 56px; border: 3px solid rgba(255, 255, 255, .55); box-shadow: 0 3px 10px rgba(0, 0, 0, .25); }
 
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
 .stat-card { display: flex; align-items: center; gap: 12px; }
