@@ -307,16 +307,22 @@ textarea.input { min-height: 84px; resize: vertical; }
 /* ---------- 7. Dashboard ---------- */
 .hero {
   background: linear-gradient(135deg, var(--primary), #0E7490);
-  border-radius: 20px; padding: 20px; color: #fff; position: relative; overflow: hidden; margin-bottom: 16px;
-  box-shadow: var(--shadow);
+  border-radius: 20px; padding: 18px 84px 18px 20px; color: #fff; position: relative; overflow: hidden; margin-bottom: 16px;
+  box-shadow: var(--shadow); min-height: auto;
 }
 .hero::after { content: "🩺"; position: absolute; right: -8px; bottom: -14px; font-size: 92px; opacity: .16; transform: rotate(-12deg); }
 .hero .greet { font-size: 13px; opacity: .85; }
-.hero h1 { font-size: 22px; margin: 2px 0 10px; }
-.hero .hero-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-.hero .clock { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
-.hero .hero-date { font-size: 13px; opacity: .9; }
-.hero .avatar { border: 3px solid rgba(255, 255, 255, .5); margin-left: auto; }
+.hero h1 { font-size: 20px; margin: 2px 0 8px; line-height: 1.2; }
+.hero .hero-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.hero .clock { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+.hero .hero-date { font-size: 12.5px; opacity: .9; }
+/* Foto profil: lingkaran kecil tetap di pojok kanan atas, tidak ikut baris jam/tanggal
+   supaya kartu tidak memanjang ke bawah di layar sempit. */
+.hero .avatar {
+  position: absolute; top: 16px; right: 16px; z-index: 2;
+  width: 52px; height: 52px; border: 2.5px solid rgba(255, 255, 255, .55); margin-left: 0;
+}
+.hero .small { position: relative; z-index: 2; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
 .stat-card { display: flex; align-items: center; gap: 12px; }

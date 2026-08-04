@@ -2328,7 +2328,15 @@ async function syncAll(opts = {}) {
     const d = await Store.getAll();
     setProgress(60);
     if (d.settings && typeof d.settings === 'object') {
+      // Foto profil & logo bersifat lokal per perangkat (base64-nya terlalu besar
+      // untuk disimpan di sel Spreadsheet). Jangan biarkan hasil sync menimpanya
+      // dengan nilai kosong dari server — itu penyebab foto profil "hilang" /
+      // balik ke default tiap kali refresh atau sinkron ulang.
+      const localFoto = State.settings.fotoProfil;
+      const localLogo = State.settings.logo;
       State.settings = { ...State.settings, ...d.settings, sheets: { ...State.settings.sheets, ...(d.settings.sheets || {}) } };
+      if (!d.settings.fotoProfil) State.settings.fotoProfil = localFoto;
+      if (!d.settings.logo) State.settings.logo = localLogo;
       cacheSettings();
     }
     State.agenda = d.agenda || [];
