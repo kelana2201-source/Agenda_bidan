@@ -1,19 +1,61 @@
 {
   "name": "Agenda & Manajemen Kegiatan Bidan",
   "short_name": "Agenda Bidan",
-  "description": "Agenda kerja harian, agenda bulanan, jadwal piket, dokumentasi kegiatan, dan laporan aktivitas Bidan.",
-  "lang": "id",
+  "description": "Agenda harian, jadwal piket, dokumentasi kegiatan, dan laporan aktivitas bidan.",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#F1F5F9",
   "theme_color": "#0F766E",
-  "categories": ["health", "productivity", "lifestyle"],
+  "background_color": "#0F766E",
+  "lang": "id",
+  "dir": "ltr",
+  "categories": ["medical", "productivity"],
   "icons": [
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "./favicon.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tambah Agenda",
+      "short_name": "Agenda",
+      "url": "./#agenda",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Jadwal Piket",
+      "short_name": "Piket",
+      "url": "./#piket",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

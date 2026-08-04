@@ -1,53 +1,38 @@
 /* ============================================================
-   AGENDA & MANAJEMEN KEGIATAN BIDAN — app.js
+   AGENDA & MANAJEMEN KEGIATAN BIDAN — app.js (MAIN LOGIC)
    Vanilla JavaScript (ES6+) — tanpa framework/library.
    ------------------------------------------------------------
-   DAFTAR ISI
-   1.  Konfigurasi & Data Awal (default, master kegiatan)
-   2.  Utilitas (tanggal, format, HTML)
-   3.  State Aplikasi & Penyimpanan Lokal
-   4.  Lapisan Data (API Google Apps Script + Mode Demo)
-   5.  Kunci & Kata Sandi (aksi sensitif saja)
-   6.  Tema (light/dark/system)
-   7.  UI Kit (toast, modal, konfirmasi, skeleton, progress)
-   8.  Grafik Canvas (bar, donut, ring)
-   9.  Navigasi & Router
-   10. View: Dashboard
-   11. View: Agenda (+ form, detail, foto, checklist)
-   12. View: Kalender
-   13. View: Jadwal Piket (+ countdown shift)
-   14. View: Master Kegiatan
-   15. View: Laporan (+ export PDF/Excel/Print)
-   16. View: Pengaturan (6 tab)
-   17. View: Tentang
-   18. Notifikasi (Browser + Telegram + Pengingat)
-   19. Sinkronisasi, Offline, Pull-to-Refresh
-   20. Inisialisasi & Event Binding
+   FASE 2 FINAL — Modular + Enhanced Backup
+   - js/constants.js  (APP, K, MASTER_DEFAULT, SETTINGS_DEFAULT, KATEGORI, SHIFT_DEFAULT, etc.)
+   - js/utils.js      (date helpers, debounce, isLate, compressImage, etc.)
+   - js/backup.js     (poin 4: full backup/restore with merge/replace + Excel)
+   ------------------------------------------------------------
+   Backward compatible: works even without modular files.
+   GitHub Pages friendly (single-file build still possible).
    ============================================================ */
 'use strict';
 
 /* ============================================================
    1. KONFIGURASI & DATA AWAL
+   (Menggunakan modul js/constants.js jika tersedia)
    ============================================================ */
 
-const APP = {
+// Fallbacks jika modul constants.js belum / tidak dimuat
+const APP = (typeof window !== 'undefined' && window.APP) || {
   nama: 'Agenda & Manajemen Kegiatan Bidan',
-  versi: '1.0.0',
+  versi: '1.2.0-fase2-final',
   tahun: 2026,
 };
 
-/* Koneksi database bawaan — isi SEKALI di sini lalu unggah ulang ke
-   GitHub Pages. Dengan ini, setiap perangkat (HP, komputer, dst.) yang
-   membuka aplikasi akan LANGSUNG terhubung ke Spreadsheet yang sama,
-   tanpa perlu mengisi Spreadsheet ID / URL Web App satu-satu di tiap HP.
-   Kosongkan (biarkan '') untuk kembali ke Mode Demo bawaan.
-   Nilai ini hanya dipakai sebagai bawaan pertama kali; setelah tersimpan
-   di suatu perangkat, perubahan lewat Pengaturan → Umum tetap berlaku
-   untuk perangkat itu seperti biasa. */
-const DEFAULT_SPREADSHEET_ID = '1nQPoelyCvHHHvCm945DlLI2y4dDrKaFMJkdE-qmvof4';
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwiUG87Cxik3JT3aZ4JplsfCCq8aRt0z5aFRlx48Dg_06mm6XK_8owj8gTX8Z4J4JvGZg/exec';
+// Final version marker
+if (typeof window !== 'undefined') {
+  window.BIDAN_APP_VERSION = APP.versi;
+}
 
-const K = {
+// Prefer constants & utils from modular files if loaded (Fase 2)
+// IMPORTANT: these are the ONLY declarations. If modules (constants.js) are loaded first,
+// we use window.* values. No duplicate const declarations.
+const K = (typeof window !== 'undefined' && window.K) || {
   s_settings: 'bidan_settings_v1',
   s_data: 'bidan_data_v1',
   s_theme: 'bidan_theme_v1',
@@ -58,12 +43,11 @@ const K = {
   s_syncts: 'bidan_syncts_v1',
 };
 
-const HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-const BULAN = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-const STATUS_LIST = ['Belum', 'Berlangsung', 'Selesai', 'Ditunda', 'Dibatalkan'];
-const PRIORITAS_LIST = ['Rendah', 'Sedang', 'Tinggi', 'Urgent'];
-
-const KATEGORI = {
+const HARI = (typeof window !== 'undefined' && window.HARI) || ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+const BULAN = (typeof window !== 'undefined' && window.BULAN) || ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+const STATUS_LIST = (typeof window !== 'undefined' && window.STATUS_LIST) || ['Belum', 'Berlangsung', 'Selesai', 'Ditunda', 'Dibatalkan'];
+const PRIORITAS_LIST = (typeof window !== 'undefined' && window.PRIORITAS_LIST) || ['Rendah', 'Sedang', 'Tinggi', 'Urgent'];
+const KATEGORI = (typeof window !== 'undefined' && window.KATEGORI) || {
   'Pelayanan Kesehatan': '#0EA5E9',
   'Kegiatan Rutin': '#14B8A6',
   'Penyuluhan': '#F59E0B',
@@ -71,16 +55,14 @@ const KATEGORI = {
   'Program': '#EC4899',
   'Administratif': '#64748B',
 };
-
-const SHIFT_DEFAULT = {
+const SHIFT_DEFAULT = (typeof window !== 'undefined' && window.SHIFT_DEFAULT) || {
   pagi:   { label: 'Pagi',   start: '07:30', end: '14:00', warna: '#22C55E', ikon: '🟢' },
   siang:  { label: 'Siang',  start: '14:00', end: '21:00', warna: '#F59E0B', ikon: '🟠' },
   malam:  { label: 'Malam',  start: '21:00', end: '07:30', warna: '#3B82F6', ikon: '🔵' },
 };
 
-/* Data awal Master Kegiatan (baku kegiatan bidan).
-   Dapat diubah bebas lewat menu Master Kegiatan / Pengaturan → Master Data. */
-const MASTER_DEFAULT = [
+// FULL fallback (required for single-file / no-module compatibility)
+const MASTER_DEFAULT = (typeof window !== 'undefined' && window.MASTER_DEFAULT) || [
   { id: 'm1', nama: 'Posyandu Balita', kategori: 'Kegiatan Rutin', ikon: '👶', warna: '#14B8A6', lokasiDefault: 'Balai Desa', sasaranDefault: 'Balita 0–5 tahun', durasiDefault: 180, keteranganDefault: 'Penimbangan, imunisasi, PMT, penyuluhan', aktif: true },
   { id: 'm2', nama: 'Posyandu Lansia', kategori: 'Kegiatan Rutin', ikon: '👵', warna: '#F59E0B', lokasiDefault: 'Balai Desa', sasaranDefault: 'Lansia', durasiDefault: 150, keteranganDefault: 'Pemeriksaan tensi, gula darah, senam lansia', aktif: true },
   { id: 'm3', nama: 'Pemeriksaan Kehamilan (ANC)', kategori: 'Pelayanan Kesehatan', ikon: '🤰', warna: '#EC4899', lokasiDefault: 'Polindes', sasaranDefault: 'Ibu hamil', durasiDefault: 120, keteranganDefault: 'ANC, imunisasi TT, konseling gizi', aktif: true },
@@ -101,23 +83,24 @@ const MASTER_DEFAULT = [
   { id: 'm18', nama: 'Persalinan (Pertolongan)', kategori: 'Pelayanan Kesehatan', ikon: '👶', warna: '#E11D48', lokasiDefault: 'Polindes / Rumah', sasaranDefault: 'Ibu bersalin', durasiDefault: 240, keteranganDefault: 'Pertolongan persalinan normal & perawatan bayi', aktif: true },
 ];
 
-const SETTINGS_DEFAULT = {
+const SETTINGS_DEFAULT = (typeof window !== 'undefined' && window.SETTINGS_DEFAULT) || {
   namaBidan: 'Bidan Dewi',
   namaPuskesmas: 'Puskesmas Purwokerto',
   namaDesa: 'Kedungwuluh',
-  logo: '',            // data URL
-  fotoProfil: '',      // data URL
-  tema: 'system',
-  password: 'bidan123',
-  spreadsheetId: DEFAULT_SPREADSHEET_ID,
-  gasUrl: DEFAULT_GAS_URL,
+  logo: '', fotoProfil: '', tema: 'system', password: 'bidan123',
+  spreadsheetId: '1nQPoelyCvHHHvCm945DlLI2y4dDrKaFMJkdE-qmvof4',
+  gasUrl: 'https://script.google.com/macros/s/AKfycbwiUG87Cxik3JT3aZ4JplsfCCq8aRt0z5aFRlx48Dg_06mm6XK_8owj8gTX8Z4J4JvGZg/exec',
   sheets: { agenda: 'Agenda', piket: 'JadwalPiket', master: 'MasterKegiatan', settings: 'Pengaturan', log: 'LogAktivitas' },
-  telegram: {
-    token: '', chatId: '', aktif: false,
-    jenis: { hariIni: true, besok: true, piket: true, terlambat: true, jam1: false, jam30: false },
-  },
+  telegram: { token: '', chatId: '', aktif: false, jenis: { hariIni: true, besok: true, piket: true, terlambat: true, jam1: false, jam30: false } },
   shifts: JSON.parse(JSON.stringify(SHIFT_DEFAULT)),
 };
+
+// Use utils module if available (backward compatible)
+const U = (typeof window !== 'undefined' && window.BidanUtils) || {};
+
+/* Koneksi bawaan (tetap untuk kompatibilitas lama) */
+const DEFAULT_SPREADSHEET_ID = SETTINGS_DEFAULT.spreadsheetId;
+const DEFAULT_GAS_URL = SETTINGS_DEFAULT.gasUrl;
 
 /* ============================================================
    2. UTILITAS
@@ -720,12 +703,41 @@ function renderDashboard() {
     </div>
   </div>` : ''}
 
-  <div class="stat-grid">
-    <div class="card stat-card"><div class="stat-ico" style="background:var(--primary-soft)">📋</div><div><div class="stat-val">${total}</div><div class="stat-lbl">Jumlah Agenda</div></div></div>
-    <div class="card stat-card"><div class="stat-ico" style="background:var(--green-soft)">✅</div><div><div class="stat-val">${selesai}</div><div class="stat-lbl">Selesai</div></div></div>
-    <div class="card stat-card"><div class="stat-ico" style="background:var(--amber-soft)">⏳</div><div><div class="stat-val">${belum}</div><div class="stat-lbl">Belum</div></div></div>
-    <div class="card stat-card"><div class="stat-ico" style="background:var(--red-soft)">🚨</div><div><div class="stat-val">${terlambat}</div><div class="stat-lbl">Terlambat</div></div></div>
+  <!-- FASE 1: Enhanced KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:var(--primary-soft)">📋</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${total}</div>
+        <div class="kpi-label">Total Agenda</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:var(--green-soft)">✅</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${selesai}</div>
+        <div class="kpi-label">Selesai</div>
+        <div class="kpi-delta ${pct >= 70 ? 'up' : ''}">${pct}%</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:var(--blue-soft)">📅</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${agendaToday.length + agendaBesok.length}</div>
+        <div class="kpi-label">Hari ini + Besok</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon" style="background:var(--red-soft)">🚨</div>
+      <div class="kpi-content">
+        <div class="kpi-value">${terlambat}</div>
+        <div class="kpi-label">Terlambat</div>
+      </div>
+    </div>
   </div>
+
+  <!-- FASE 1: Quick Templates from Master -->
+  ${renderQuickTemplates()}
 
   <div class="dash-grid">
     <div class="card">
@@ -959,7 +971,7 @@ function agendaCard(a) {
   </button>`;
 }
 
-const PRIO_COLOR = { Rendah: '#94A3B8', Sedang: '#3B82F6', Tinggi: '#F59E0B', Urgent: '#EF4444' };
+const PRIO_COLOR = (typeof window !== 'undefined' && window.PRIO_COLOR) || { Rendah: '#94A3B8', Sedang: '#3B82F6', Tinggi: '#F59E0B', Urgent: '#EF4444' };
 
 /* ---------- Form tambah/edit agenda ---------- */
 function openAgendaForm(id) {
@@ -1226,7 +1238,8 @@ function renderKalender() {
   const selItems = sortAgenda(agendaByDay[c.selected] || []);
 
   el.innerHTML = `
-  <div class="card mb-16">
+  <div class="kal-layout">
+  <div class="card kal-card">
     <div class="cal-head">
       <button class="icon-btn" data-action="cal-prev">‹</button>
       <div class="cal-title">${BULAN[m]} ${y}</div>
@@ -1245,11 +1258,12 @@ function renderKalender() {
     </div>
   </div>
 
-  <div class="card">
+  <div class="card kal-detail">
     <div class="card-title">📋 Agenda ${fmtTanggal(c.selected)} <span class="grow"></span>
       <button class="btn btn-primary btn-sm" data-action="cal-add-agenda" data-val="${c.selected}">+ Agenda</button>
     </div>
     ${selItems.length ? selItems.map(agendaCard).join('') : emptyState('🌤️', 'Tidak ada agenda', 'Ketuk tanggal lain atau tambah agenda.')}
+  </div>
   </div>`;
 }
 
@@ -1348,14 +1362,8 @@ function renderPiket() {
     <div class="cd-lbl" style="margin-top:2px">${cd ? cd.ikon + ' Shift <b>' + cd.label + '</b> • ' + fmtTanggal(dateKey(cd.start)) + ' ' + fmtHM(hms(cd.start)) + '–' + fmtHM(hms(cd.end)) : 'Tidak ada shift berikutnya'}</div>
   </div>
 
-  <div class="chip-row mb-8">
-    ${chipBtn2('all', 'Semua', filt)}${chipBtn2('Pagi', '🟢 Pagi', filt)}${chipBtn2('Siang', '🟠 Siang', filt)}${chipBtn2('Malam', '🔵 Malam', filt)}
-  </div>
-
-  <div class="section-h">Timeline Piket Bulan Ini</div>
-  <div id="piket-list" class="mb-16">${list.length ? list.map(piketCard).join('') : emptyState('🕐', 'Tidak ada piket', 'Ketuk tanggal pada kalender untuk menambah jadwal piket.')}</div>
-
-  <div class="card mb-16">
+  <div class="kal-layout">
+    <div class="card kal-card">
     <div class="cal-head">
       <button class="icon-btn" data-action="piket-prev">‹</button>
       <div class="cal-title">${BULAN[m]} ${y}</div>
@@ -1369,6 +1377,15 @@ function renderPiket() {
       <span>🟢 Pagi ${fmtHM(State.settings.shifts.pagi.start)}–${fmtHM(State.settings.shifts.pagi.end)}</span>
       <span>🟠 Siang ${fmtHM(State.settings.shifts.siang.start)}–${fmtHM(State.settings.shifts.siang.end)}</span>
       <span>🔵 Malam ${fmtHM(State.settings.shifts.malam.start)}–${fmtHM(State.settings.shifts.malam.end)}</span>
+    </div>
+    </div>
+
+    <div class="kal-side">
+      <div class="chip-row mb-8">
+        ${chipBtn2('all', 'Semua', filt)}${chipBtn2('Pagi', '🟢 Pagi', filt)}${chipBtn2('Siang', '🟠 Siang', filt)}${chipBtn2('Malam', '🔵 Malam', filt)}
+      </div>
+      <div class="section-h" style="margin-top:0">Timeline Piket Bulan Ini</div>
+      <div id="piket-list">${list.length ? list.map(piketCard).join('') : emptyState('🕐', 'Tidak ada piket', 'Ketuk tanggal pada kalender untuk menambah jadwal piket.')}</div>
     </div>
   </div>`;
 
@@ -1673,7 +1690,7 @@ function renderLaporanCharts() {
     </div>`).join('') : '<p class="muted small">Tidak ada data.</p>';
 }
 
-const STATUS_COLOR = { Belum: '#94A3B8', Berlangsung: '#3B82F6', Selesai: '#22C55E', Ditunda: '#F59E0B', Dibatalkan: '#EF4444', Terlambat: '#EF4444' };
+const STATUS_COLOR = (typeof window !== 'undefined' && window.STATUS_COLOR) || { Belum: '#94A3B8', Berlangsung: '#3B82F6', Selesai: '#22C55E', Ditunda: '#F59E0B', Dibatalkan: '#EF4444', Terlambat: '#EF4444' };
 
 function renderLaporanTable() {
   const list = monthAgenda();
@@ -2625,12 +2642,84 @@ function handleClick(e) {
     case 'pick-logo': $('#u-logo-file').click(); break;
 
     case 'sync-refresh': syncAll({ silent: false }); break;
-    case 'sync-backup': backupJSON(); break;
+    case 'sync-backup': 
+      if (window.BidanBackup && window.BidanBackup.showBackupOptions) {
+        window.BidanBackup.showBackupOptions();
+      } else {
+        backupJSON(); 
+      }
+      break;
     case 'sync-export': exportAgendaJSON(); break;
-    case 'sync-restore': importJSON(); break;
+    case 'sync-restore': 
+      if (window.BidanBackup) window.BidanBackup.importJSON(); 
+      else importJSON(); 
+      break;
+
+    /* ===== FASE 2 BACKUP HANDLERS ===== */
+    case 'backup-all-json':
+      closeModal();
+      if (window.BidanBackup) window.BidanBackup.backupAllJSON();
+      break;
+    case 'backup-full-excel':
+      closeModal();
+      if (window.BidanBackup) window.BidanBackup.exportFullExcel();
+      break;
+    case 'export-agenda-json':
+      closeModal();
+      if (window.BidanBackup) window.BidanBackup.exportAgendaJSON();
+      else exportAgendaJSON();
+      break;
+    case 'export-agenda-excel':
+      closeModal();
+      if (window.exportExcel) window.exportExcel();
+      break;
+    case 'import-merge':
+      closeModal();
+      if (window.BidanBackup) {
+        const inp = document.getElementById('import-file');
+        if (inp) {
+          inp.onchange = (e) => window.BidanBackup.handleImportFile(e, 'merge');
+          inp.click();
+        }
+      } else {
+        importJSON();
+      }
+      break;
+    case 'import-replace':
+      closeModal();
+      if (confirm('⚠️ GANTI SEMUA DATA? Data saat ini akan hilang dan diganti dengan data dari file backup.')) {
+        if (window.BidanBackup) {
+          const inp = document.getElementById('import-file');
+          if (inp) {
+            inp.onchange = (e) => window.BidanBackup.handleImportFile(e, 'replace');
+            inp.click();
+          }
+        }
+      }
+      break;
     case 'sync-clear': resetCacheLocal(); break;
     case 'export-print': exportPrint(); break;
     case 'export-excel': exportExcel(); break;
+
+    /* ===== FASE 1 NEW HANDLERS ===== */
+    case 'quick-create-from-master':
+      quickCreateFromMaster(id);
+      break;
+
+    case 'global-open-agenda':
+      closeModal();
+      openAgendaDetail(id);
+      break;
+
+    case 'global-open-piket':
+      closeModal();
+      openPiketModal(val);
+      break;
+
+    case 'global-create-from-master':
+      closeModal();
+      quickCreateFromMaster(id);
+      break;
   }
 }
 
@@ -2658,8 +2747,190 @@ function handleChange(e) {
 function handleInput(e) {
   const t = e.target;
   if (t.id === 'agenda-search') { State.agendaFilter.q = t.value; debouncedAgendaList(); }
+  if (t.id === 'global-search-input') { handleGlobalSearchInput(t.value); }
 }
 const debouncedAgendaList = debounce(renderAgendaList, 250);
+
+/* ==================== FASE 1: GLOBAL SEARCH ==================== */
+let _globalSearchTimeout = null;
+
+function handleGlobalSearchInput(query) {
+  clearTimeout(_globalSearchTimeout);
+  _globalSearchTimeout = setTimeout(() => {
+    if (!query || query.length < 2) return;
+    performGlobalSearch(query.trim());
+  }, 260);
+}
+
+function performGlobalSearch(query) {
+  const q = query.toLowerCase();
+  const results = { agenda: [], piket: [], master: [] };
+
+  State.agenda.forEach(a => {
+    const text = ((a.namaKegiatan||'') + ' ' + (a.lokasi||'') + ' ' + (a.keterangan||'') + ' ' + (a.sasaran||'') + ' ' + (a.kategori||'')).toLowerCase();
+    if (text.includes(q)) results.agenda.push(a);
+  });
+
+  State.piket.forEach(p => {
+    const text = (p.shift + ' ' + (p.catatan||'') + ' ' + fmtTanggal(p.tanggal)).toLowerCase();
+    if (text.includes(q)) results.piket.push(p);
+  });
+
+  State.master.forEach(m => {
+    const text = ((m.nama||'') + ' ' + (m.kategori||'') + ' ' + (m.lokasiDefault||'') + ' ' + (m.sasaranDefault||'')).toLowerCase();
+    if (text.includes(q)) results.master.push(m);
+  });
+
+  showGlobalSearchResults(query, results);
+}
+
+function showGlobalSearchResults(query, results) {
+  const total = results.agenda.length + results.piket.length + results.master.length;
+  if (total === 0) {
+    toast('Tidak ada hasil untuk "' + query + '"', 'info');
+    const inp = $('#global-search-input'); if (inp) inp.value = '';
+    return;
+  }
+
+  // Clear search input after showing results
+  setTimeout(() => {
+    const inp = $('#global-search-input');
+    if (inp) inp.value = '';
+  }, 600);
+
+  let html = `<div class="global-results">`;
+
+  if (results.agenda.length) {
+    html += `<div class="global-result-group"><h5>📋 Agenda (${results.agenda.length})</h5>`;
+    results.agenda.slice(0, 6).forEach(a => {
+      html += `
+        <div class="global-result-item" data-action="global-open-agenda" data-id="${a.id}">
+          <div class="result-icon" style="background:${(KATEGORI[a.kategori]||'#14B8A6')}22">📅</div>
+          <div class="result-text">
+            <div class="result-title">${escapeHtml(a.namaKegiatan)}</div>
+            <div class="result-meta">${fmtTanggal(a.tanggal)} • ${statusTampil(a)} • ${escapeHtml(a.lokasi||'')}</div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (results.piket.length) {
+    html += `<div class="global-result-group"><h5>🕐 Piket (${results.piket.length})</h5>`;
+    results.piket.slice(0, 4).forEach(p => {
+      const meta = SHIFT_META(p.shift);
+      html += `
+        <div class="global-result-item" data-action="global-open-piket" data-val="${p.tanggal}">
+          <div class="result-icon" style="background:${meta.warna}22">${meta.ikon}</div>
+          <div class="result-text">
+            <div class="result-title">Shift ${meta.label} • ${fmtTanggal(p.tanggal)}</div>
+            <div class="result-meta">${escapeHtml(p.catatan || 'Tidak ada catatan')}</div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  if (results.master.length) {
+    html += `<div class="global-result-group"><h5>🗂️ Master Kegiatan (${results.master.length})</h5>`;
+    results.master.slice(0, 6).forEach(m => {
+      html += `
+        <div class="global-result-item" data-action="global-create-from-master" data-id="${m.id}">
+          <div class="result-icon" style="background:${m.warna||'#14B8A6'}22">${m.ikon || '📋'}</div>
+          <div class="result-text">
+            <div class="result-title">${escapeHtml(m.nama)}</div>
+            <div class="result-meta">${escapeHtml(m.kategori)} • ${escapeHtml(m.lokasiDefault || '')}</div>
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+
+  openModal(html, { 
+    title: `🔍 Hasil pencarian: "${escapeHtml(query)}" (${total})`,
+    style: 'max-width:520px'
+  });
+}
+
+/* ==================== FASE 1: QUICK TEMPLATES ==================== */
+function renderQuickTemplates() {
+  const aktif = State.master.filter(m => m.aktif).slice(0, 6);
+  if (!aktif.length) return '';
+
+  return `
+    <div class="quick-templates">
+      <div class="section-h">⚡ Buat Cepat dari Template</div>
+      <div class="template-grid">
+        ${aktif.map(m => `
+          <button class="template-card" data-action="quick-create-from-master" data-id="${m.id}">
+            <span class="t-ico">${m.ikon || '📋'}</span>
+            <span class="t-name">${escapeHtml(m.nama)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>`;
+}
+
+async function quickCreateFromMaster(masterId) {
+  const m = State.master.find(x => x.id === masterId);
+  if (!m) return;
+
+  // Close any open modal first
+  closeModal();
+
+  // Open agenda form prefilled
+  State.editAgendaId = null;
+  State.checklistDraft = [];
+  State._fotoDraft = undefined;
+
+  const today = todayKey();
+
+  openModal(`
+  <form id="form-agenda" data-edit="">
+    <div class="form-grid">
+      <div class="field"><label>Tanggal *</label><input type="date" class="input" id="a-tanggal" required value="${today}"></div>
+      <div class="field"><label>Hari (otomatis)</label><input type="text" class="input" id="a-hari" readonly value="${namaHari(today)}" style="background:var(--gray-soft)"></div>
+      
+      <div class="field full"><label>Nama Kegiatan *</label><input class="input" id="a-nama" required value="${escapeHtml(m.nama)}"></div>
+      
+      <div class="field"><label>Kategori *</label>
+        ${DD.render('a-kategori', Object.keys(KATEGORI), m.kategori || 'Pelayanan Kesehatan')}
+      </div>
+      <div class="field"><label>Prioritas</label>
+        ${DD.render('a-prioritas', PRIORITAS_LIST, 'Sedang')}
+      </div>
+      
+      <div class="field"><label>Jam Mulai</label><input type="time" class="input" id="a-jam1" value="08:00"></div>
+      <div class="field"><label>Jam Selesai</label><input type="time" class="input" id="a-jam2" value="${m.durasiDefault ? fromMin(480 + (m.durasiDefault || 60)) : ''}"></div>
+      
+      <div class="field full"><label>Lokasi</label><input class="input" id="a-lokasi" value="${escapeHtml(m.lokasiDefault || '')}"></div>
+      <div class="field"><label>Sasaran</label><input class="input" id="a-sasaran" value="${escapeHtml(m.sasaranDefault || '')}"></div>
+      <div class="field"><label>Status</label>
+        ${DD.render('a-status', STATUS_LIST, 'Belum')}
+      </div>
+      <div class="field full"><label>Keterangan</label><textarea class="input" id="a-ket">${escapeHtml(m.keteranganDefault || '')}</textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-soft" data-action="modal-close">Batal</button>
+      <button type="submit" class="btn btn-primary">💾 Simpan Agenda</button>
+    </div>
+  </form>`, { title: `➕ ${m.nama}` });
+
+  // Auto-fill remaining fields
+  setTimeout(() => {
+    const dur = m.durasiDefault || 60;
+    const jam1 = $('#a-jam1');
+    if (jam1 && jam1.value) {
+      const end = fromMin(toMin(jam1.value) + dur);
+      const jam2 = $('#a-jam2');
+      if (jam2) jam2.value = end;
+    }
+  }, 50);
+}
+
+/* Quick create handler will be added to handleClick */
 
 /* Delegasi submit form */
 async function handleSubmit(e) {

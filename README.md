@@ -45,6 +45,10 @@
 ├── index.html            # Kerangka aplikasi (login, shell, semua view, modal)
 ├── style.css             # Seluruh gaya (light/dark, mobile-first, animasi)
 ├── app.js                # Seluruh logika aplikasi (20 bagian, ES6 modular)
+├── js/
+│   ├── constants.js      # Konstanta & data default (Fase 2)
+│   ├── utils.js          # Helper umum + sleep() global (Fase 2)
+│   └── backup.js         # Backup/Restore merge & replace (Fase 2)
 ├── manifest.webmanifest  # Manifest PWA (nama, ikon, tema)
 ├── sw.js                 # Service worker (offline cache + notifikasi)
 ├── favicon.png           # Ikon tab (128px)
