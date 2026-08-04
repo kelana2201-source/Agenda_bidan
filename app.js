@@ -705,6 +705,8 @@ function navigate(view, silent) {
   $('#view-subtitle').textContent = typeof sub === 'function' ? sub() : sub;
   $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.nav === view));
   $$('.bn-item').forEach(n => n.classList.toggle('active', n.dataset.nav === view));
+  // Dashboard sengaja bersih: tombol tambah hanya tersedia setelah pengguna masuk ke menu kerja.
+  $('#fab').classList.toggle('hidden', view === 'dashboard');
   closeSidebar(); closeFab(); closeMore(); closeNotifs();
   clearInterval(State._cdTimer);
   document.title = (el ? el.dataset.title : '') + ' — ' + APP.nama;
