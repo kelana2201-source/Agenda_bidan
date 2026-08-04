@@ -633,6 +633,7 @@ const VIEWS = {
   kalender: { render: renderKalender, sub: () => bulanTahun(new Date(State.calendar.y, State.calendar.m, 1)) },
   piket: { render: renderPiket, sub: () => bulanTahun(new Date(State.piketCal.y, State.piketCal.m, 1)) },
   laporan: { render: renderLaporan, sub: () => 'Rekap ' + State.laporanMonth.replace('-', ' ') },
+  galeri: { render: renderGaleri, sub: () => 'Foto dokumentasi kegiatan' },
   pengaturan: { render: renderPengaturan, sub: () => 'Konfigurasi aplikasi' },
   tentang: { render: renderTentang, sub: () => 'v' + APP.versi },
 };
@@ -858,7 +859,8 @@ function miniCalendar(selKey) {
       if (k === selKey) cls.push('today');
       if (day.getMonth() !== m) cls.push('other');
       if (has[k]) cls.push('has');
-      h += '<td><span class="' + cls.join(' ') + '">' + day.getDate() + '</span></td>';
+      if (liburInfo(k)) cls.push('libur');
+      h += '<td><span class="' + cls.join(' ') + '" title="' + (liburInfo(k) ? escapeHtml(liburInfo(k).nama) : '') + '">' + day.getDate() + '</span></td>';
     }
     h += '</tr>';
   }
@@ -1225,17 +1227,21 @@ function renderKalender() {
       const k = dateKey(day);
       const inMonth = day.getMonth() === m;
       const items = agendaByDay[k] || [];
+      const libur = liburInfo(k);
       const cls = ['cal-cell'];
       if (!inMonth) cls.push('other');
       if (k === today) cls.push('today');
       if (k === c.selected) cls.push('selected');
+      if (items.length) cls.push('has');
+      if (libur) { cls.push('libur'); if (libur.nasional) cls.push('libur-nas'); }
       const dots = items.slice(0, 4).map(it => '<i style="background:' + (KATEGORI[it.kategori] || '#14B8A6') + '"></i>').join('');
       const cnt = items.length ? '<span class="small" style="position:absolute;top:3px;right:6px;font-size:9px;font-weight:800;opacity:.75">' + items.length + '</span>' : '';
-      cells += `<button class="${cls.join(' ')}" data-action="cal-day" data-val="${k}">${cnt}${day.getDate()}<span class="dots">${dots}</span></button>`;
+      cells += `<button class="${cls.join(' ')}" data-action="cal-day" data-val="${k}" title="${libur ? escapeHtml(libur.nama) : ''}">${cnt}${day.getDate()}<span class="dots">${dots}</span></button>`;
     }
   }
 
   const selItems = sortAgenda(agendaByDay[c.selected] || []);
+  const selLibur = liburInfo(c.selected);
 
   el.innerHTML = `
   <div class="kal-layout">
@@ -1251,6 +1257,7 @@ function renderKalender() {
     </div>
     <div class="cal-legend">
       <span><i style="background:var(--primary)"></i>Hari ini</span>
+      <span><i style="background:var(--red)"></i>Libur</span>
       <span><i style="background:var(--green)"></i>Pelayanan</span>
       <span><i style="background:var(--amber)"></i>Penyuluhan</span>
       <span><i style="background:var(--primary-2)"></i>Rutin</span>
@@ -1262,6 +1269,7 @@ function renderKalender() {
     <div class="card-title">📋 Agenda ${fmtTanggal(c.selected)} <span class="grow"></span>
       <button class="btn btn-primary btn-sm" data-action="cal-add-agenda" data-val="${c.selected}">+ Agenda</button>
     </div>
+    ${selLibur ? `<div class="chip" style="background:var(--red-soft);color:var(--red);margin-bottom:10px">🎌 ${escapeHtml(selLibur.nama)}${selLibur.nasional ? '' : ' (akhir pekan)'}</div>` : ''}
     ${selItems.length ? selItems.map(agendaCard).join('') : emptyState('🌤️', 'Tidak ada agenda', 'Ketuk tanggal lain atau tambah agenda.')}
   </div>
   </div>`;
@@ -1336,9 +1344,12 @@ function renderPiket() {
       const k = dateKey(day);
       const p = piketByDay[k];
       const inMonth = day.getMonth() === m;
+      const libur = liburInfo(k);
       const cls = ['cal-cell'];
       if (!inMonth) cls.push('other');
       if (k === today) cls.push('today');
+      if (p && k < today) cls.push('past');  // piket yang sudah lewat → pudar, tidak tampak aktif
+      if (libur) { cls.push('libur'); if (libur.nasional) cls.push('libur-nas'); }
       const meta = p ? SHIFT_META(p.shift) : null;
       cells += `<button class="${cls.join(' ')}" data-action="piket-day" data-val="${k}" title="${p ? 'Shift ' + p.shift : 'Kosong — ketuk untuk set shift'}"
         style="${p ? 'background:' + meta.warna + '22;border-color:' + meta.warna + ';color:var(--text)' : ''}">
@@ -1407,11 +1418,13 @@ function hms(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
 
 function piketCard(p) {
   const meta = SHIFT_META(p.shift);
+  const past = p.tanggal < todayKey();
   return `
-  <button class="card agenda-card shift-card mb-12" data-action="piket-day" data-val="${p.tanggal}" style="--shift-color:${meta.warna};text-align:left">
+  <button class="card agenda-card shift-card mb-12 ${past ? 'past' : ''}" data-action="piket-day" data-val="${p.tanggal}" style="--shift-color:${meta.warna};text-align:left">
     <div class="agenda-head">
       <span class="agenda-date">📅 ${fmtTanggal(p.tanggal)} • ${namaHari(p.tanggal)}</span>
       <span class="shift-chip" style="background:${meta.warna}">${meta.ikon} Shift ${meta.label}</span>
+      ${past ? '<span class="badge" style="background:var(--gray-soft);color:var(--text-muted)">✓ Selesai</span>' : ''}
     </div>
     <div class="agenda-meta">
       <span>🕐 <b>${fmtHM(meta.start)} – ${fmtHM(meta.end)}</b></span>
@@ -1608,6 +1621,26 @@ async function deleteMaster(id) {
 }
 
 /* ============================================================
+   14b. VIEW: GALERI (foto dokumentasi dari lampiran agenda)
+   ============================================================ */
+
+function renderGaleri() {
+  const el = $('#view-galeri');
+  const items = sortAgenda(State.agenda.filter(a => a.foto)).slice().reverse(); // terbaru dulu
+  el.innerHTML = `
+  <div class="card mb-16">
+    <div class="card-title">🖼️ Galeri Dokumentasi <span class="grow"></span><span class="badge" style="background:var(--primary-soft);color:var(--primary)">${items.length} foto</span></div>
+    <p class="small muted">Foto diambil otomatis dari lampiran agenda. Ketuk foto untuk membuka detail kegiatannya.</p>
+  </div>
+  ${items.length ? `<div class="gal-grid">${items.map(a => `
+    <button class="gal-item" data-action="agenda-detail" data-id="${escapeHtml(a.id)}" title="${escapeHtml(a.namaKegiatan)} — ${fmtTanggal(a.tanggal)}">
+      <img src="${a.foto}" alt="${escapeHtml(a.namaKegiatan)}" loading="lazy">
+      <span class="gal-cap"><b>${escapeHtml(a.namaKegiatan)}</b><small>${fmtTanggal(a.tanggal)}${a.lokasi ? ' • ' + escapeHtml(a.lokasi) : ''}</small></span>
+    </button>`).join('')}</div>`
+  : emptyState('🖼️', 'Belum ada foto', 'Tambahkan foto lewat "Lampiran Foto" saat membuat / mengedit agenda.')}`;
+}
+
+/* ============================================================
    15. VIEW: LAPORAN (+ export)
    ============================================================ */
 
@@ -1692,6 +1725,30 @@ function renderLaporanCharts() {
 
 const STATUS_COLOR = (typeof window !== 'undefined' && window.STATUS_COLOR) || { Belum: '#94A3B8', Berlangsung: '#3B82F6', Selesai: '#22C55E', Ditunda: '#F59E0B', Dibatalkan: '#EF4444', Terlambat: '#EF4444' };
 
+/* Hari libur nasional & cuti bersama (fallback bila constants.js tidak dimuat) */
+const LIBUR_NASIONAL = (typeof window !== 'undefined' && window.LIBUR_NASIONAL) || {
+  '2026-01-01': 'Tahun Baru 2026 Masehi', '2026-01-16': 'Isra Mikraj Nabi Muhammad SAW',
+  '2026-02-16': 'Cuti Bersama Imlek 2577 Kongzili', '2026-02-17': 'Tahun Baru Imlek 2577 Kongzili',
+  '2026-03-18': 'Cuti Bersama Hari Suci Nyepi', '2026-03-19': 'Hari Suci Nyepi (Tahun Baru Saka 1948)',
+  '2026-03-20': 'Cuti Bersama Idulfitri 1447 H', '2026-03-21': 'Idulfitri 1447 Hijriah', '2026-03-22': 'Idulfitri 1447 Hijriah',
+  '2026-03-23': 'Cuti Bersama Idulfitri 1447 H', '2026-03-24': 'Cuti Bersama Idulfitri 1447 H',
+  '2026-04-03': 'Wafat Yesus Kristus', '2026-04-05': 'Kebangkitan Yesus Kristus (Paskah)',
+  '2026-05-01': 'Hari Buruh Internasional', '2026-05-14': 'Kenaikan Yesus Kristus', '2026-05-15': 'Cuti Bersama Kenaikan Yesus Kristus',
+  '2026-05-27': 'Iduladha 1447 Hijriah', '2026-05-28': 'Cuti Bersama Iduladha 1447 H', '2026-05-31': 'Hari Raya Waisak 2570 BE',
+  '2026-06-01': 'Hari Lahir Pancasila', '2026-06-16': '1 Muharam Tahun Baru Islam 1448 H',
+  '2026-08-17': 'Proklamasi Kemerdekaan RI', '2026-08-25': 'Maulid Nabi Muhammad SAW',
+  '2026-12-24': 'Cuti Bersama Natal', '2026-12-25': 'Kelahiran Yesus Kristus (Natal)',
+};
+
+/* Info libur untuk satu tanggal (kunci 'YYYY-MM-DD'):
+   hari libur nasional/cuti bersama → { nama, nasional:true };
+   hari Minggu → { nama:'Hari Minggu', nasional:false }; lainnya → null */
+function liburInfo(k) {
+  if (LIBUR_NASIONAL[k]) return { nama: LIBUR_NASIONAL[k], nasional: true };
+  if (parseKey(k).getDay() === 0) return { nama: 'Hari Minggu', nasional: false };
+  return null;
+}
+
 function renderLaporanTable() {
   const list = monthAgenda();
   $('#lap-table').innerHTML = list.length ? `
@@ -1770,12 +1827,21 @@ function renderPengaturan() {
   </div>
 
   <div class="tab-pane ${_tabAktif === 'umum' ? 'active' : ''}" id="tab-umum">
+    ${!State.unlocked ? `
+    <div class="card" style="text-align:center;padding:28px 20px">
+      <div style="font-size:42px;margin-bottom:8px">🔒</div>
+      <h4 class="mb-8">Pengaturan Umum Terkunci</h4>
+      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Profil, kata sandi, dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Tab lain (Telegram, Master Data, Shift, Sinkronisasi) bebas diakses tanpa kata sandi.</p>
+      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
+    </div>
+    ` : `
     <div class="card mb-16">
       <div class="card-title">👤 Profil Bidan</div>
       <div class="form-grid">
         <div class="field"><label>Nama Bidan</label><input class="input" id="u-nama" value="${escapeHtml(s.namaBidan)}"></div>
         <div class="field"><label>Nama Puskesmas</label><input class="input" id="u-puskesmas" value="${escapeHtml(s.namaPuskesmas)}"></div>
         <div class="field"><label>Nama Desa</label><input class="input" id="u-desa" value="${escapeHtml(s.namaDesa)}"></div>
+        <div class="field"><label>Kata Sandi Login</label><input class="input" id="u-password" value="${escapeHtml(s.password)}"></div>
         <div class="field"><label>Tema</label>
           ${DD.render('set-tema', [{ v: 'light', l: 'Terang ☀️' }, { v: 'dark', l: 'Gelap 🌙' }, { v: 'system', l: 'Ikuti Sistem' }], s.tema)}
         </div>
@@ -1791,19 +1857,6 @@ function renderPengaturan() {
       <button class="btn btn-primary mt-8" data-action="save-umum">💾 Simpan Pengaturan Umum</button>
     </div>
 
-    ${!State.unlocked ? `
-    <div class="card" style="text-align:center;padding:28px 20px">
-      <div style="font-size:42px;margin-bottom:8px">🔒</div>
-      <h4 class="mb-8">Kata Sandi & Koneksi Database Terkunci</h4>
-      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Kata sandi login dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Profil, foto, logo, dan tab lain bebas diakses tanpa kata sandi.</p>
-      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
-    </div>
-    ` : `
-    <div class="card mb-16">
-      <div class="card-title">🔐 Kata Sandi Login</div>
-      <div class="field"><label>Kata Sandi Login</label><input class="input" id="u-password" value="${escapeHtml(s.password)}"></div>
-    </div>
-
     <div class="card mb-16">
       <div class="card-title">🗄️ Koneksi Google Spreadsheet <span class="grow"></span><span class="conn-status ${s.gasUrl ? 'ok' : 'no'}" id="conn-status"><span class="dot"></span><span id="conn-text">${s.gasUrl ? 'Terhubung' : 'Tidak Terhubung'}</span></span></div>
       <div class="field"><label>Spreadsheet ID</label><input class="input" id="d-spreadsheet" value="${escapeHtml(s.spreadsheetId)}" placeholder="1AbCdEfGh... (dari URL Spreadsheet)"></div>
@@ -1813,7 +1866,7 @@ function renderPengaturan() {
       </div>
       <p class="small muted mb-12">💡 Panduan lengkap koneksi: buka file <b>README.md</b> di repositori, atau file <b>gas/Code.gs</b> untuk skrip backend Google Apps Script.</p>
       <div class="flex flex-wrap">
-        <button class="btn btn-primary" data-action="save-db">💾 Simpan Kata Sandi & Koneksi</button>
+        <button class="btn btn-primary" data-action="save-db">💾 Simpan</button>
         <button class="btn btn-soft" data-action="conn-test">🔌 Uji Koneksi</button>
         <button class="btn btn-soft" data-action="db-reset">🗑️ Reset (hapus cache lokal)</button>
       </div>
@@ -1824,7 +1877,6 @@ function renderPengaturan() {
       <p class="small muted mt-8">💡 <b>Cara cepat pindah koneksi antar perangkat:</b> di perangkat yang sudah terhubung, klik <b>Salin Pengaturan Koneksi</b> → kirim teksnya ke HP lain (WhatsApp) → di HP klik <b>Tempel Pengaturan Koneksi</b> → Terapkan. Tidak perlu mengetik ulang.</p>
     </div>
     `}
-
   </div>
 
   <div class="tab-pane ${_tabAktif === 'telegram' ? 'active' : ''}" id="tab-telegram">
@@ -1903,9 +1955,10 @@ async function savePengaturanUmum() {
   s.namaBidan = $('#u-nama').value.trim() || 'Bidan';
   s.namaPuskesmas = $('#u-puskesmas').value.trim();
   s.namaDesa = $('#u-desa').value.trim();
+  s.password = $('#u-password').value.trim() || 'bidan123';
   cacheSettings();
-  try { await Store.saveSettings({ namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa }); }
-  catch (e) { queueAdd({ action: 'saveSettings', settings: { namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa } }); }
+  try { await Store.saveSettings({ namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, password: s.password }); }
+  catch (e) { queueAdd({ action: 'saveSettings', settings: { namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, password: s.password } }); }
   toast('✅ Pengaturan umum disimpan', 'success');
   Store.log('Ubah pengaturan umum', '');
   renderSidebarUser();
@@ -1914,7 +1967,6 @@ async function savePengaturanUmum() {
 
 async function saveKoneksiDb() {
   const s = State.settings;
-  if ($('#u-password')) s.password = $('#u-password').value.trim() || 'bidan123';
   s.spreadsheetId = $('#d-spreadsheet').value.trim();
   s.gasUrl = $('#d-gas').value.trim();
   s.sheets = {
@@ -1926,10 +1978,10 @@ async function saveKoneksiDb() {
   };
   cacheSettings();
   if (!isDemoMode()) {
-    try { await Store.saveSettings({ spreadsheetId: s.spreadsheetId, gasUrl: s.gasUrl, sheets: s.sheets, password: s.password }); }
+    try { await Store.saveSettings({ spreadsheetId: s.spreadsheetId, gasUrl: s.gasUrl, sheets: s.sheets }); }
     catch (e) { toast('⚠️ Simpan ke server gagal — tersimpan lokal', 'warn'); }
   }
-  toast('✅ Kata sandi & koneksi database disimpan', 'success');
+  toast('✅ Koneksi database disimpan', 'success');
   renderPengaturan();
 }
 
@@ -2333,15 +2385,7 @@ async function syncAll(opts = {}) {
     const d = await Store.getAll();
     setProgress(60);
     if (d.settings && typeof d.settings === 'object') {
-      // Foto profil & logo bersifat lokal per perangkat (base64-nya terlalu besar
-      // untuk disimpan di sel Spreadsheet). Jangan biarkan hasil sync menimpanya
-      // dengan nilai kosong dari server — itu penyebab foto profil "hilang" /
-      // balik ke default tiap kali refresh atau sinkron ulang.
-      const localFoto = State.settings.fotoProfil;
-      const localLogo = State.settings.logo;
       State.settings = { ...State.settings, ...d.settings, sheets: { ...State.settings.sheets, ...(d.settings.sheets || {}) } };
-      if (!d.settings.fotoProfil) State.settings.fotoProfil = localFoto;
-      if (!d.settings.logo) State.settings.logo = localLogo;
       cacheSettings();
     }
     State.agenda = d.agenda || [];

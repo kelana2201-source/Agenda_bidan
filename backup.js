@@ -1,194 +1,262 @@
 /* ============================================================
-   AGENDA & MANAJEMEN KEGIATAN BIDAN — js/backup.js
-   Modul Backup & Restore (Fase 2, poin 4).
-   Dimuat SEBELUM app.js. Fungsi-fungsi di sini baru benar-benar
-   dipanggil setelah user menekan tombol (setelah app.js selesai
-   berjalan), sehingga aman memakai variabel global dari app.js
-   seperti State, Store, APP, todayKey(), dst — di script klasik
-   (non-module) semua file berbagi satu scope global yang sama.
+   AGENDA & MANAJEMEN KEGIATAN BIDAN — js/backup.js (Fase 2)
+   Poin 4: Backup / Restore yang lebih baik.
+   ------------------------------------------------------------
+   window.BidanBackup:
+     showBackupOptions()  → modal pilihan backup/import
+     backupAllJSON()      → backup lengkap (semua data) ke JSON
+     exportFullExcel()    → export Excel (Agenda + Piket + Master)
+     exportAgendaJSON()   → export agenda saja ke JSON
+     importJSON()         → dialog pilih mode lalu pilih file
+     handleImportFile(e, mode) → proses file; mode 'merge' | 'replace'
+   ------------------------------------------------------------
+   Modul ini dimuat SEBELUM app.js. Semua referensi ke fungsi/
+   state milik app.js (State, Store, toast, openModal, dll.)
+   hanya dipakai SAAT DIPANGGIL (call-time), bukan saat load,
+   sehingga aman. Jika app.js tidak ada, modul gagal dengan
+   pesan yang jelas — tidak merusak halaman.
    ============================================================ */
-'use strict';
+(function () {
+  'use strict';
+  if (typeof window === 'undefined') return;
 
-window.BidanBackup = (function () {
+  /* ---- helper defensif ke API app.js (dipanggil saat runtime) ---- */
+  function _toast(msg, type, dur) { if (typeof toast === 'function') toast(msg, type, dur); else console.log('[backup]', msg); }
+  function _esc(s) {
+    if (typeof escapeHtml === 'function') return escapeHtml(s);
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function _todayKey() {
+    if (typeof todayKey === 'function') return todayKey();
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function _fmtT(k) { return (typeof fmtTanggal === 'function') ? fmtTanggal(k) : k; }
+  function _fmtHM(t) { return (typeof fmtHM === 'function') ? fmtHM(t) : (t || '—'); }
 
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
-
-  function dl(blob, nama) {
+  function _download(blob, nama) {
+    if (typeof downloadBlob === 'function') { downloadBlob(blob, nama); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = nama;
     document.body.appendChild(a);
     a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
 
-  // ===== MODAL PILIHAN BACKUP/RESTORE =====
+  function _ready() { return typeof State !== 'undefined' && typeof Store !== 'undefined'; }
+
+  /* ============================================================
+     MODAL PILIHAN BACKUP
+     ============================================================ */
   function showBackupOptions() {
-    const html = `
-      <div class="backup-menu" style="display:flex;flex-direction:column;gap:8px">
-        <p class="muted" style="font-size:13px;margin-bottom:4px">Simpan cadangan data atau pulihkan dari file cadangan.</p>
-        <button class="btn btn-primary btn-block" data-action="backup-all-json">💾 Backup Lengkap (JSON)</button>
-        <button class="btn btn-soft btn-block" data-action="backup-full-excel">📗 Export Excel Lengkap (Agenda + Piket + Master)</button>
-        <button class="btn btn-soft btn-block" data-action="export-agenda-json">📤 Export Agenda saja (JSON)</button>
-        <button class="btn btn-soft btn-block" data-action="export-agenda-excel">📊 Export Agenda saja (Excel)</button>
-        <hr style="border:none;border-top:1px solid var(--border,#e2e8f0);margin:6px 0">
-        <button class="btn btn-soft btn-block" data-action="import-merge">📥 Pulihkan — Gabung (Merge)</button>
-        <button class="btn btn-danger btn-block" data-action="import-replace">⚠️ Pulihkan — Ganti Semua (Replace)</button>
-        <input type="file" id="import-file" accept="application/json" class="hidden" style="display:none">
-      </div>`;
-    if (typeof openModal === 'function') {
-      openModal(html, { title: '💾 Backup & Restore' });
-    }
+    if (typeof openModal !== 'function') { _toast('Modul UI belum siap', 'error'); return; }
+    const nA = State.agenda.length, nP = State.piket.length, nM = State.master.length;
+    openModal(`
+      <p class="small muted" style="margin-bottom:12px">
+        Data saat ini: <b>${nA} agenda</b> • <b>${nP} piket</b> • <b>${nM} master kegiatan</b>.
+        File backup bisa dipindahkan ke perangkat lain lalu di-import kembali (digabung atau ganti semua).
+      </p>
+      <div class="card-title">📤 Backup / Export</div>
+      <div class="flex flex-wrap mb-16" style="gap:8px">
+        <button class="btn btn-primary btn-sm" data-action="backup-all-json">💾 Backup Lengkap (JSON)</button>
+        <button class="btn btn-soft btn-sm" data-action="backup-full-excel">📗 Semua Data (Excel)</button>
+        <button class="btn btn-soft btn-sm" data-action="export-agenda-json">📤 Agenda Saja (JSON)</button>
+      </div>
+      <div class="card-title">📥 Restore / Import</div>
+      <div class="flex flex-wrap" style="gap:8px">
+        <button class="btn btn-soft btn-sm" data-action="import-merge">📥 Import — Gabung (merge)</button>
+        <button class="btn btn-danger btn-sm" data-action="import-replace">⚠️ Import — Ganti Semua (replace)</button>
+      </div>
+      <p class="small muted" style="margin-top:12px">
+        <b>Merge</b>: data dari file ditambahkan / diperbarui, data lain tetap ada.<br>
+        <b>Replace</b>: seluruh data diganti isi file backup (diminta konfirmasi dulu).
+      </p>`, { title: '💾 Backup & Restore Data' });
   }
 
-  // ===== BACKUP JSON LENGKAP =====
+  /* ============================================================
+     BACKUP / EXPORT
+     ============================================================ */
   function backupAllJSON() {
+    if (!_ready()) return;
     const data = {
-      app: (window.APP && window.APP.nama) || 'Agenda & Manajemen Kegiatan Bidan',
-      versi: (window.APP && window.APP.versi) || '',
+      app: (typeof APP !== 'undefined' ? APP.nama : 'Agenda Bidan'),
+      versi: (typeof APP !== 'undefined' ? APP.versi : ''),
       tanggal: new Date().toISOString(),
       settings: State.settings,
       agenda: State.agenda,
       piket: State.piket,
       master: State.master,
-      log: State.log
+      log: State.log || [],
     };
-    dl(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'backup-lengkap-bidan-' + todayKey() + '.json');
-    if (typeof toast === 'function') toast('💾 Backup lengkap diunduh', 'success');
-    if (typeof Store !== 'undefined' && Store.log) Store.log('Backup lengkap (JSON)', State.agenda.length + ' agenda, ' + State.piket.length + ' piket, ' + State.master.length + ' master');
+    _download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'backup-bidan-' + _todayKey() + '.json');
+    _toast('💾 Backup lengkap diunduh (' + State.agenda.length + ' agenda, ' + State.piket.length + ' piket, ' + State.master.length + ' master)', 'success');
+    try { Store.log('Backup lengkap JSON', ''); } catch (e) { /* abaikan */ }
   }
 
-  // ===== EXPORT AGENDA SAJA (JSON) =====
   function exportAgendaJSON() {
+    if (!_ready()) return;
     const data = { tanggal: new Date().toISOString(), agenda: State.agenda };
-    dl(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'export-agenda-' + todayKey() + '.json');
-    if (typeof toast === 'function') toast('📤 Export agenda diunduh', 'success');
-  }
-
-  // ===== EXPORT EXCEL LENGKAP (multi-sheet: Agenda, Piket, Master) =====
-  // Memakai format SpreadsheetML (XML Excel 2003) — dibuka native oleh
-  // Excel dengan 3 tab terpisah, tanpa perlu library eksternal (SheetJS dst).
-  function sheetXml(name, headers, rows) {
-    const headRow = '<Row>' + headers.map(h => '<Cell><Data ss:Type="String">' + esc(h) + '</Data></Cell>').join('') + '</Row>';
-    const bodyRows = rows.map(r => '<Row>' + r.map(c => {
-      const isNum = typeof c === 'number';
-      return '<Cell><Data ss:Type="' + (isNum ? 'Number' : 'String') + '">' + esc(c == null ? '' : c) + '</Data></Cell>';
-    }).join('') + '</Row>').join('');
-    return '<Worksheet ss:Name="' + esc(name) + '"><Table>' + headRow + bodyRows + '</Table></Worksheet>';
+    _download(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'export-agenda-' + _todayKey() + '.json');
+    _toast('📤 Export agenda diunduh', 'success');
   }
 
   function exportFullExcel() {
+    if (!_ready()) return;
+    if (!State.agenda.length && !State.piket.length && !State.master.length) { _toast('Tidak ada data untuk diekspor', 'warn'); return; }
     const s = State.settings || {};
 
-    const agendaHeaders = ['Tanggal', 'Hari', 'Kegiatan', 'Kategori', 'Jam Mulai', 'Jam Selesai', 'Lokasi', 'Sasaran', 'Status', 'Prioritas', 'Keterangan'];
-    const agendaRows = (State.agenda || []).map(a => [
-      a.tanggal || '', a.hari || '', a.namaKegiatan || '', a.kategori || '',
-      a.jamMulai || '', a.jamSelesai || '', a.lokasi || '', a.sasaran || '',
-      a.status || '', a.prioritas || '', a.keterangan || ''
-    ]);
+    const tAgenda = '<h3>Agenda</h3><table border="1"><tr><th>Tanggal</th><th>Hari</th><th>Kegiatan</th><th>Kategori</th><th>Jam</th><th>Lokasi</th><th>Sasaran</th><th>Status</th><th>Prioritas</th><th>Keterangan</th></tr>' +
+      State.agenda.map(a => '<tr><td>' + _esc(a.tanggal) + '</td><td>' + _esc(a.hari || '') + '</td><td>' + _esc(a.namaKegiatan) + '</td><td>' + _esc(a.kategori) + '</td><td>' + _esc(_fmtHM(a.jamMulai) + (a.jamSelesai ? '–' + _fmtHM(a.jamSelesai) : '')) + '</td><td>' + _esc(a.lokasi || '') + '</td><td>' + _esc(a.sasaran || '') + '</td><td>' + _esc(a.status) + '</td><td>' + _esc(a.prioritas || '') + '</td><td>' + _esc(a.keterangan || '') + '</td></tr>').join('') + '</table>';
 
-    const piketHeaders = ['Tanggal', 'Shift', 'Catatan'];
-    const piketRows = (State.piket || []).map(p => [p.tanggal || '', p.shift || '', p.catatan || '']);
+    const tPiket = '<h3>Jadwal Piket</h3><table border="1"><tr><th>Tanggal</th><th>Shift</th><th>Catatan</th></tr>' +
+      State.piket.map(p => '<tr><td>' + _esc(p.tanggal) + '</td><td>' + _esc(p.shift) + '</td><td>' + _esc(p.catatan || '') + '</td></tr>').join('') + '</table>';
 
-    const masterHeaders = ['Nama Kegiatan', 'Kategori', 'Lokasi Default', 'Sasaran Default', 'Durasi (menit)', 'Keterangan Default', 'Aktif'];
-    const masterRows = (State.master || []).map(m => [
-      m.nama || '', m.kategori || '', m.lokasiDefault || '', m.sasaranDefault || '',
-      m.durasiDefault || 0, m.keteranganDefault || '', m.aktif ? 'Ya' : 'Tidak'
-    ]);
+    const tMaster = '<h3>Master Kegiatan</h3><table border="1"><tr><th>Nama</th><th>Kategori</th><th>Lokasi</th><th>Sasaran</th><th>Durasi (mnt)</th><th>Aktif</th><th>Keterangan</th></tr>' +
+      State.master.map(m => '<tr><td>' + _esc(m.nama) + '</td><td>' + _esc(m.kategori) + '</td><td>' + _esc(m.lokasiDefault || '') + '</td><td>' + _esc(m.sasaranDefault || '') + '</td><td>' + _esc(m.durasiDefault || '') + '</td><td>' + (m.aktif ? 'Ya' : 'Tidak') + '</td><td>' + _esc(m.keteranganDefault || '') + '</td></tr>').join('') + '</table>';
 
-    if (!agendaRows.length && !piketRows.length && !masterRows.length) {
-      if (typeof toast === 'function') toast('Tidak ada data untuk diekspor', 'warn');
-      return;
-    }
-
-    const xml = '<?xml version="1.0"?>' +
-      '<?mso-application progid="Excel.Sheet"?>' +
-      '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">' +
-      '<DocumentProperties xmlns="urn:schemas-microsoft-com:office:office"><Title>Laporan Bidan - ' + esc(s.namaBidan || '') + '</Title></DocumentProperties>' +
-      sheetXml('Agenda', agendaHeaders, agendaRows) +
-      sheetXml('Jadwal Piket', piketHeaders, piketRows) +
-      sheetXml('Master Kegiatan', masterHeaders, masterRows) +
-      '</Workbook>';
-
-    dl(new Blob([xml], { type: 'application/vnd.ms-excel' }), 'laporan-lengkap-bidan-' + todayKey() + '.xls');
-    if (typeof toast === 'function') toast('📗 Excel lengkap diunduh (3 sheet)', 'success');
-    if (typeof Store !== 'undefined' && Store.log) Store.log('Export Excel lengkap', 'Agenda+Piket+Master');
+    const html = '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>' +
+      '<h2>Backup Data — ' + _esc(s.namaBidan || 'Bidan') + ' (' + new Date().toLocaleDateString('id-ID') + ')</h2>' +
+      tAgenda + '<br>' + tPiket + '<br>' + tMaster + '</body></html>';
+    _download(new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' }), 'backup-lengkap-' + _todayKey() + '.xls');
+    _toast('📗 Backup Excel lengkap diunduh', 'success');
+    try { Store.log('Export Excel lengkap', ''); } catch (e) { /* abaikan */ }
   }
 
-  // ===== IMPORT (RESTORE) =====
+  /* ============================================================
+     IMPORT / RESTORE
+     ============================================================ */
   function importJSON() {
+    // Dialog mode dulu (merge aman / replace berbahaya) — tombolnya
+    // memakai data-action yang sudah ditangani app.js.
+    if (typeof openModal === 'function') {
+      openModal(`
+        <p class="small muted" style="margin-bottom:12px">Pilih cara menggabungkan isi file backup dengan data saat ini:</p>
+        <div class="flex" style="gap:8px;flex-direction:column">
+          <button class="btn btn-primary" data-action="import-merge">📥 <b>Gabung (merge)</b> — tambah/perbarui, data lain aman</button>
+          <button class="btn btn-danger" data-action="import-replace">⚠️ <b>Ganti Semua (replace)</b> — data saat ini dihapus dulu</button>
+        </div>
+        <div class="modal-foot"><button class="btn btn-soft" data-action="modal-close">Batal</button></div>`,
+        { title: '📥 Restore / Import JSON' });
+    } else {
+      _pickFile('merge');
+    }
+  }
+
+  function _pickFile(mode) {
     const inp = document.getElementById('import-file');
-    if (inp) { inp.onchange = (e) => handleImportFile(e, 'merge'); inp.click(); }
+    if (!inp) { _toast('Input file tidak ditemukan', 'error'); return; }
+    inp.onchange = (e) => {
+      try { e.stopPropagation(); } catch (_) { /* abaikan */ }
+      inp.onchange = null;
+      handleImportFile(e, mode);
+    };
+    inp.value = '';
+    inp.click();
+  }
+
+  function _validAgenda(it) { return it && it.id && it.tanggal; }
+  function _validPiket(it) { return it && it.id && it.tanggal; }
+  function _validMaster(it) { return it && it.id && it.nama; }
+
+  async function _save(kind, it) {
+    try {
+      if (kind === 'agenda') await Store.saveAgenda(it);
+      else if (kind === 'piket') await Store.savePiket(it);
+      else await Store.saveMaster(it);
+      return true;
+    } catch (e) {
+      try { queueAdd({ action: 'save' + (kind === 'agenda' ? 'Agenda' : kind === 'piket' ? 'Piket' : 'Master'), item: it }); } catch (_) { /* abaikan */ }
+      return false;
+    }
+  }
+
+  async function _delete(kind, id) {
+    try {
+      if (kind === 'agenda') await Store.deleteAgenda(id);
+      else if (kind === 'piket') await Store.deletePiket(id);
+      else await Store.deleteMaster(id);
+    } catch (e) {
+      try { queueAdd({ action: 'delete' + (kind === 'agenda' ? 'Agenda' : kind === 'piket' ? 'Piket' : 'Master'), id }); } catch (_) { /* abaikan */ }
+    }
   }
 
   async function handleImportFile(e, mode) {
+    // Cegah pemrosesan ganda: delegasi change global app.js juga
+    // memantau #import-file — hentikan bubbling di sini.
+    try { e.stopPropagation(); } catch (_) { /* abaikan */ }
     mode = mode || 'merge';
-    const f = e.target.files[0];
+    if (!_ready()) { _toast('Aplikasi belum siap', 'error'); return; }
+
+    const f = e.target && e.target.files && e.target.files[0];
+    if (e.target) e.target.value = '';
     if (!f) return;
-    try {
-      const data = JSON.parse(await f.text());
-      let nAgenda = 0, nPiket = 0, nMaster = 0;
 
-      if (mode === 'replace') {
-        State.agenda = [];
-        State.piket = [];
-        State.master = [];
-      }
+    let data;
+    try { data = JSON.parse(await f.text()); }
+    catch (err) { _toast('❌ File tidak valid: ' + err.message, 'error', 4500); return; }
+    if (!data || typeof data !== 'object') { _toast('❌ Struktur file tidak dikenali', 'error'); return; }
 
-      if (data.agenda && Array.isArray(data.agenda)) {
-        for (const it of data.agenda) {
-          if (!it.id || !it.tanggal) continue;
-          try { await Store.saveAgenda(it); } catch (err) { if (typeof queueAdd === 'function') queueAdd({ action: 'saveAgenda', item: it }); }
-          State.agenda = State.agenda.filter(x => x.id !== it.id);
-          State.agenda.push(it);
-          nAgenda++;
-        }
-      }
-      if (data.piket && Array.isArray(data.piket)) {
-        for (const it of data.piket) {
-          if (!it.id || !it.tanggal) continue;
-          try { await Store.savePiket(it); } catch (err) { if (typeof queueAdd === 'function') queueAdd({ action: 'savePiket', item: it }); }
-          State.piket = State.piket.filter(x => x.id !== it.id);
-          State.piket.push(it);
-          nPiket++;
-        }
-      }
-      if (data.master && Array.isArray(data.master)) {
-        for (const it of data.master) {
-          if (!it.id || !it.nama) continue;
-          try { await Store.saveMaster(it); } catch (err) { if (typeof queueAdd === 'function') queueAdd({ action: 'saveMaster', item: it }); }
-          State.master = State.master.filter(x => x.id !== it.id);
-          State.master.push(it);
-          nMaster++;
-        }
-      }
-      if (mode === 'replace' && data.settings) {
-        State.settings = { ...State.settings, ...data.settings };
-      } else if (data.settings) {
-        State.settings = { ...State.settings, ...data.settings };
-      }
+    if (typeof setProgress === 'function') setProgress(15);
+    const res = { agenda: 0, piket: 0, master: 0, settings: false, dihapus: 0, antre: 0 };
 
-      if (typeof cacheSettings === 'function') cacheSettings();
-      if (typeof cacheData === 'function') cacheData();
-
-      const label = mode === 'replace' ? 'Ganti semua' : 'Gabung';
-      if (typeof toast === 'function') toast('✅ Pulihkan (' + label + ') selesai — ' + nAgenda + ' agenda, ' + nPiket + ' piket, ' + nMaster + ' master', 'success', 4200);
-      if (typeof Store !== 'undefined' && Store.log) Store.log('Restore data (' + label + ')', nAgenda + ' agenda, ' + nPiket + ' piket, ' + nMaster + ' master');
-      if (typeof closeModal === 'function') closeModal();
-      if (typeof renderCurrentView === 'function') renderCurrentView();
-    } catch (err) {
-      if (typeof toast === 'function') toast('❌ File tidak valid: ' + err.message, 'error', 4500);
+    /* REPLACE: hapus dulu koleksi yang digantikan oleh file */
+    if (mode === 'replace') {
+      const agendaBaru = Array.isArray(data.agenda) ? data.agenda : null;
+      const piketBaru = Array.isArray(data.piket) ? data.piket : null;
+      const masterBaru = Array.isArray(data.master) ? data.master : null;
+      if (agendaBaru) { for (const it of State.agenda.slice()) { await _delete('agenda', it.id); res.dihapus++; } State.agenda = []; }
+      if (piketBaru) { for (const it of State.piket.slice()) { await _delete('piket', it.id); res.dihapus++; } State.piket = []; }
+      if (masterBaru) { for (const it of State.master.slice()) { await _delete('master', it.id); res.dihapus++; } State.master = []; }
     }
-    e.target.value = '';
+
+    /* Simpan (upsert) item dari file + perbarui state lokal */
+    if (Array.isArray(data.agenda)) {
+      for (const it of data.agenda) {
+        if (!_validAgenda(it)) continue;
+        if (!(await _save('agenda', it))) res.antre++;
+        const i = State.agenda.findIndex(x => x.id === it.id);
+        if (i >= 0) State.agenda[i] = it; else State.agenda.push(it);
+        res.agenda++;
+      }
+    }
+    if (Array.isArray(data.piket)) {
+      for (const it of data.piket) {
+        if (!_validPiket(it)) continue;
+        if (!(await _save('piket', it))) res.antre++;
+        const i = State.piket.findIndex(x => x.id === it.id);
+        if (i >= 0) State.piket[i] = it; else State.piket.push(it);
+        res.piket++;
+      }
+    }
+    if (Array.isArray(data.master)) {
+      for (const it of data.master) {
+        if (!_validMaster(it)) continue;
+        if (!(await _save('master', it))) res.antre++;
+        const i = State.master.findIndex(x => x.id === it.id);
+        if (i >= 0) State.master[i] = it; else State.master.push(it);
+        res.master++;
+      }
+    }
+    if (data.settings && typeof data.settings === 'object') {
+      State.settings = { ...State.settings, ...data.settings };
+      res.settings = true;
+      try { if (typeof cacheSettings === 'function') cacheSettings(); } catch (_) { /* abaikan */ }
+    }
+
+    try { if (typeof cacheData === 'function') cacheData(); } catch (_) { /* abaikan */ }
+    if (typeof setProgress === 'function') setProgress(100);
+
+    const ringkas = res.agenda + ' agenda, ' + res.piket + ' piket, ' + res.master + ' master' +
+      (mode === 'replace' ? ' • ' + res.dihapus + ' data lama dihapus' : '') +
+      (res.antre ? ' • ' + res.antre + ' masuk antrian offline' : '');
+    _toast('✅ Import ' + (mode === 'replace' ? '(ganti semua) ' : '(gabung) ') + 'selesai: ' + ringkas, 'success', 5000);
+    try { Store.log('Import ' + mode, ringkas); } catch (_) { /* abaikan */ }
+    if (typeof renderCurrentView === 'function') renderCurrentView();
   }
 
-  return {
-    showBackupOptions,
-    backupAllJSON,
-    exportFullExcel,
-    exportAgendaJSON,
-    importJSON,
-    handleImportFile
+  window.BidanBackup = {
+    showBackupOptions, backupAllJSON, exportFullExcel, exportAgendaJSON,
+    importJSON, pickFile: _pickFile, handleImportFile,
   };
 })();

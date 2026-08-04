@@ -307,22 +307,16 @@ textarea.input { min-height: 84px; resize: vertical; }
 /* ---------- 7. Dashboard ---------- */
 .hero {
   background: linear-gradient(135deg, var(--primary), #0E7490);
-  border-radius: 20px; padding: 18px 84px 18px 20px; color: #fff; position: relative; overflow: hidden; margin-bottom: 16px;
-  box-shadow: var(--shadow); min-height: auto;
+  border-radius: 20px; padding: 20px; color: #fff; position: relative; overflow: hidden; margin-bottom: 16px;
+  box-shadow: var(--shadow);
 }
 .hero::after { content: "🩺"; position: absolute; right: -8px; bottom: -14px; font-size: 92px; opacity: .16; transform: rotate(-12deg); }
 .hero .greet { font-size: 13px; opacity: .85; }
-.hero h1 { font-size: 20px; margin: 2px 0 8px; line-height: 1.2; }
-.hero .hero-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.hero .clock { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
-.hero .hero-date { font-size: 12.5px; opacity: .9; }
-/* Foto profil: lingkaran kecil tetap di pojok kanan atas, tidak ikut baris jam/tanggal
-   supaya kartu tidak memanjang ke bawah di layar sempit. */
-.hero .avatar {
-  position: absolute; top: 16px; right: 16px; z-index: 2;
-  width: 52px; height: 52px; border: 2.5px solid rgba(255, 255, 255, .55); margin-left: 0;
-}
-.hero .small { position: relative; z-index: 2; }
+.hero h1 { font-size: 22px; margin: 2px 0 10px; }
+.hero .hero-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.hero .clock { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+.hero .hero-date { font-size: 13px; opacity: .9; }
+.hero .avatar { border: 3px solid rgba(255, 255, 255, .5); margin-left: auto; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
 .stat-card { display: flex; align-items: center; gap: 12px; }
@@ -586,15 +580,40 @@ textarea.input { min-height: 84px; resize: vertical; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-muted); padding: 4px 0; }
 .cal-cell {
-  aspect-ratio: 1; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  font-size: 13.5px; font-weight: 600; border: 1px solid transparent; transition: var(--trans); position: relative; background: var(--surface-2);
+  aspect-ratio: 1; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 13.5px; font-weight: 600; transition: var(--trans); position: relative;
+  background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm);
 }
-.cal-cell:hover { border-color: var(--primary-2); }
-.cal-cell.other { opacity: .3; }
-.cal-cell.today { border-color: var(--primary); color: var(--primary); background: var(--primary-soft); }
-.cal-cell.selected { background: var(--primary); color: #fff; }
-.cal-cell .dots { display: flex; gap: 3px; position: absolute; bottom: 5px; }
+.cal-cell:hover { border-color: var(--primary-2); box-shadow: var(--shadow); transform: translateY(-2px); }
+.cal-cell.other { opacity: .35; box-shadow: none; }
+.cal-cell.has { font-weight: 800; background: rgba(20, 184, 166, .07); border-color: rgba(20, 184, 166, .45); }
+.cal-cell.today { border: 2px solid var(--primary); color: var(--primary); background: var(--primary-soft); font-weight: 800; }
+.cal-cell.selected { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: var(--shadow); }
+.cal-cell .dots { display: flex; gap: 3px; position: absolute; bottom: 6px; }
 .cal-cell .dots i { width: 5px; height: 5px; border-radius: 50%; }
+
+/* Hari libur (Minggu & libur nasional) — angka merah */
+.cal-cell.libur { color: var(--red); }
+.cal-cell.libur-nas { background: rgba(239, 68, 68, .07); border-color: rgba(239, 68, 68, .45); font-weight: 800; }
+.cal-cell.libur.selected, .cal-cell.libur-nas.selected { color: #fff; background: var(--primary); border-color: var(--primary); }
+.cal-cell.libur.today { color: var(--red); border-color: var(--red); }
+.mini-cal .day.libur { color: var(--red); }
+.mini-cal .day.today.libur { color: #fff; }
+
+/* Piket yang sudah lewat — pudar agar tidak tampak aktif */
+.cal-cell.past { opacity: .4; }
+.shift-card.past { opacity: .55; filter: saturate(.55); }
+.shift-card.past:hover { opacity: .8; }
+
+/* Galeri dokumentasi */
+.gal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.gal-item { position: relative; aspect-ratio: 1; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 0; background: var(--surface-2); transition: var(--trans); cursor: pointer; }
+.gal-item:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
+.gal-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gal-cap { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; text-align: left; gap: 1px; padding: 20px 9px 7px; background: linear-gradient(transparent, rgba(2, 6, 23, .82)); color: #fff; font-size: 11px; }
+.gal-cap b { font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gal-cap small { opacity: .85; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 480px) { .gal-grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 9px; } }
 .cal-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-muted); margin-top: 10px; }
 .cal-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
 

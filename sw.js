@@ -9,7 +9,7 @@
    - Request API (Google Apps Script) TIDAK di-cache.
    ============================================================ */
 
-const CACHE_NAME = 'agenda-bidan-v3';
+const CACHE_NAME = 'agenda-bidan-v4';
 const ASSETS = [
   './',
   './index.html',
