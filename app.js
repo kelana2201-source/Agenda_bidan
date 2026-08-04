@@ -1770,21 +1770,12 @@ function renderPengaturan() {
   </div>
 
   <div class="tab-pane ${_tabAktif === 'umum' ? 'active' : ''}" id="tab-umum">
-    ${!State.unlocked ? `
-    <div class="card" style="text-align:center;padding:28px 20px">
-      <div style="font-size:42px;margin-bottom:8px">🔒</div>
-      <h4 class="mb-8">Pengaturan Umum Terkunci</h4>
-      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Profil, kata sandi, dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Tab lain (Telegram, Master Data, Shift, Sinkronisasi) bebas diakses tanpa kata sandi.</p>
-      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
-    </div>
-    ` : `
     <div class="card mb-16">
       <div class="card-title">👤 Profil Bidan</div>
       <div class="form-grid">
         <div class="field"><label>Nama Bidan</label><input class="input" id="u-nama" value="${escapeHtml(s.namaBidan)}"></div>
         <div class="field"><label>Nama Puskesmas</label><input class="input" id="u-puskesmas" value="${escapeHtml(s.namaPuskesmas)}"></div>
         <div class="field"><label>Nama Desa</label><input class="input" id="u-desa" value="${escapeHtml(s.namaDesa)}"></div>
-        <div class="field"><label>Kata Sandi Login</label><input class="input" id="u-password" value="${escapeHtml(s.password)}"></div>
         <div class="field"><label>Tema</label>
           ${DD.render('set-tema', [{ v: 'light', l: 'Terang ☀️' }, { v: 'dark', l: 'Gelap 🌙' }, { v: 'system', l: 'Ikuti Sistem' }], s.tema)}
         </div>
@@ -1800,6 +1791,19 @@ function renderPengaturan() {
       <button class="btn btn-primary mt-8" data-action="save-umum">💾 Simpan Pengaturan Umum</button>
     </div>
 
+    ${!State.unlocked ? `
+    <div class="card" style="text-align:center;padding:28px 20px">
+      <div style="font-size:42px;margin-bottom:8px">🔒</div>
+      <h4 class="mb-8">Kata Sandi & Koneksi Database Terkunci</h4>
+      <p class="muted small mb-16" style="max-width:430px;margin:0 auto 14px">Kata sandi login dan koneksi database dilindungi kata sandi agar tidak sembarangan diubah. Profil, foto, logo, dan tab lain bebas diakses tanpa kata sandi.</p>
+      <button class="btn btn-primary" data-action="unlock-umum">🔓 Buka dengan Kata Sandi</button>
+    </div>
+    ` : `
+    <div class="card mb-16">
+      <div class="card-title">🔐 Kata Sandi Login</div>
+      <div class="field"><label>Kata Sandi Login</label><input class="input" id="u-password" value="${escapeHtml(s.password)}"></div>
+    </div>
+
     <div class="card mb-16">
       <div class="card-title">🗄️ Koneksi Google Spreadsheet <span class="grow"></span><span class="conn-status ${s.gasUrl ? 'ok' : 'no'}" id="conn-status"><span class="dot"></span><span id="conn-text">${s.gasUrl ? 'Terhubung' : 'Tidak Terhubung'}</span></span></div>
       <div class="field"><label>Spreadsheet ID</label><input class="input" id="d-spreadsheet" value="${escapeHtml(s.spreadsheetId)}" placeholder="1AbCdEfGh... (dari URL Spreadsheet)"></div>
@@ -1809,7 +1813,7 @@ function renderPengaturan() {
       </div>
       <p class="small muted mb-12">💡 Panduan lengkap koneksi: buka file <b>README.md</b> di repositori, atau file <b>gas/Code.gs</b> untuk skrip backend Google Apps Script.</p>
       <div class="flex flex-wrap">
-        <button class="btn btn-primary" data-action="save-db">💾 Simpan</button>
+        <button class="btn btn-primary" data-action="save-db">💾 Simpan Kata Sandi & Koneksi</button>
         <button class="btn btn-soft" data-action="conn-test">🔌 Uji Koneksi</button>
         <button class="btn btn-soft" data-action="db-reset">🗑️ Reset (hapus cache lokal)</button>
       </div>
@@ -1820,6 +1824,7 @@ function renderPengaturan() {
       <p class="small muted mt-8">💡 <b>Cara cepat pindah koneksi antar perangkat:</b> di perangkat yang sudah terhubung, klik <b>Salin Pengaturan Koneksi</b> → kirim teksnya ke HP lain (WhatsApp) → di HP klik <b>Tempel Pengaturan Koneksi</b> → Terapkan. Tidak perlu mengetik ulang.</p>
     </div>
     `}
+
   </div>
 
   <div class="tab-pane ${_tabAktif === 'telegram' ? 'active' : ''}" id="tab-telegram">
@@ -1898,10 +1903,9 @@ async function savePengaturanUmum() {
   s.namaBidan = $('#u-nama').value.trim() || 'Bidan';
   s.namaPuskesmas = $('#u-puskesmas').value.trim();
   s.namaDesa = $('#u-desa').value.trim();
-  s.password = $('#u-password').value.trim() || 'bidan123';
   cacheSettings();
-  try { await Store.saveSettings({ namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, password: s.password }); }
-  catch (e) { queueAdd({ action: 'saveSettings', settings: { namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa, password: s.password } }); }
+  try { await Store.saveSettings({ namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa }); }
+  catch (e) { queueAdd({ action: 'saveSettings', settings: { namaBidan: s.namaBidan, namaPuskesmas: s.namaPuskesmas, namaDesa: s.namaDesa } }); }
   toast('✅ Pengaturan umum disimpan', 'success');
   Store.log('Ubah pengaturan umum', '');
   renderSidebarUser();
@@ -1910,6 +1914,7 @@ async function savePengaturanUmum() {
 
 async function saveKoneksiDb() {
   const s = State.settings;
+  if ($('#u-password')) s.password = $('#u-password').value.trim() || 'bidan123';
   s.spreadsheetId = $('#d-spreadsheet').value.trim();
   s.gasUrl = $('#d-gas').value.trim();
   s.sheets = {
@@ -1921,10 +1926,10 @@ async function saveKoneksiDb() {
   };
   cacheSettings();
   if (!isDemoMode()) {
-    try { await Store.saveSettings({ spreadsheetId: s.spreadsheetId, gasUrl: s.gasUrl, sheets: s.sheets }); }
+    try { await Store.saveSettings({ spreadsheetId: s.spreadsheetId, gasUrl: s.gasUrl, sheets: s.sheets, password: s.password }); }
     catch (e) { toast('⚠️ Simpan ke server gagal — tersimpan lokal', 'warn'); }
   }
-  toast('✅ Koneksi database disimpan', 'success');
+  toast('✅ Kata sandi & koneksi database disimpan', 'success');
   renderPengaturan();
 }
 
