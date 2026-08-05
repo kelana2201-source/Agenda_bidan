@@ -719,6 +719,9 @@ function navigate(view, silent) {
    ============================================================ */
 
 function renderDashboard() {
+  // Dashboard adalah halaman ringkasan; tombol tambah hanya muncul di menu kerja.
+  const fab = $('#fab');
+  if (fab) fab.classList.add('hidden');
   const el = $('#view-dashboard');
   const s = State.settings;
   const now = new Date();

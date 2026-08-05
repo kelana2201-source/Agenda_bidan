@@ -317,14 +317,19 @@ body[data-view="dashboard"] .fab-menu { display: none !important; }
 /* ---------- 7. Dashboard ---------- */
 .hero {
   background: linear-gradient(135deg, var(--primary), #0E7490);
-  border-radius: 20px; padding: 18px 84px 18px 20px; color: #fff; position: relative; overflow: hidden; margin-bottom: 16px;
-  box-shadow: var(--shadow); min-height: auto;
+  border-radius: 20px; padding: 18px 132px 18px 20px; color: #fff; position: relative; overflow: hidden; margin-bottom: 16px;
+  box-shadow: var(--shadow); min-height: 126px;
 }
 .hero::after { content: "🩺"; position: absolute; right: -8px; bottom: -14px; font-size: 92px; opacity: .16; transform: rotate(-12deg); }
 .hero .greet { font-size: 13px; opacity: .85; }
 .hero h1 { font-size: 20px; margin: 2px 0 8px; line-height: 1.2; }
 .hero .hero-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.hero .clock { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+/* Jam ditempatkan tepat di bawah foto profil agar bagian identitas lebih seimbang. */
+.hero .clock {
+  position: absolute; top: 76px; right: 16px; z-index: 3;
+  font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: .35px;
+  white-space: nowrap; text-align: center;
+}
 .hero .hero-date { font-size: 12.5px; opacity: .9; }
 /* Foto profil: lingkaran kecil tetap di pojok kanan atas, tidak ikut baris jam/tanggal
    supaya kartu tidak memanjang ke bawah di layar sempit. */
