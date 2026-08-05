@@ -686,7 +686,8 @@ function redrawCharts() {
 const VIEWS = {
   dashboard: { render: renderDashboard, sub: () => 'Ringkasan hari Anda' },
   agenda: { render: renderAgenda, sub: () => 'Daftar kegiatan' },
-  kalender: { render: renderKalender, sub: () => bulanTahun(new Date(State.calendar.y, State.calendar.m, 1)) },
+  // Nama bulan sudah tampil jelas di kartu kalender; header atas cukup menampilkan judul halaman.
+  kalender: { render: renderKalender, sub: () => '' },
   piket: { render: renderPiket, sub: () => bulanTahun(new Date(State.piketCal.y, State.piketCal.m, 1)) },
   galeri: { render: renderGaleri, sub: () => 'Dokumentasi foto kegiatan' },
   laporan: { render: renderLaporan, sub: () => 'Rekap ' + State.laporanMonth.replace('-', ' ') },
@@ -1011,7 +1012,7 @@ function agendaCard(a) {
   const prio = a.prioritas || 'Sedang';
   const lateness = isLate(a) ? '<span class="badge status-Terlambat">⚠️ Terlambat</span>' : '';
   return `
-  <button class="card agenda-card" data-action="agenda-detail" data-id="${escapeHtml(a.id)}" style="--prio-color:${PRIO_COLOR[prio] || '#14B8A6'}">
+  <button class="card agenda-card ${a.status === 'Selesai' ? 'agenda-done' : ''}" data-action="agenda-detail" data-id="${escapeHtml(a.id)}" style="--prio-color:${PRIO_COLOR[prio] || '#14B8A6'}">
     <div class="agenda-head">
       <span class="agenda-date">📅 ${fmtTanggal(a.tanggal)} • ${namaHari(a.tanggal)}</span>
       <span class="badge status-${st}">${st}</span>

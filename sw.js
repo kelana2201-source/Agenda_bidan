@@ -1,4 +1,4 @@
-const CACHE = 'agenda-bidan-v5';
+const CACHE = 'agenda-bidan-v7';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './favicon.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
@@ -9,9 +9,11 @@ self.addEventListener('activate', event => {
 });
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+  // Online selalu memakai versi terbaru lalu memperbarui cache. Cache hanya dipakai
+  // sebagai fallback saat offline, agar pembaruan UI tidak tertahan versi lama.
+  event.respondWith(fetch(event.request).then(response => {
     const copy = response.clone();
     if (new URL(event.request.url).origin === self.location.origin) caches.open(CACHE).then(cache => cache.put(event.request, copy));
     return response;
-  }).catch(() => caches.match('./index.html'))));
+  }).catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html'))));
 });

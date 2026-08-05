@@ -542,6 +542,9 @@ body[data-view="dashboard"] .fab-menu { display: none !important; }
 /* ---------- 8. Agenda ---------- */
 .agenda-card { display: block; text-align: left; width: 100%; margin-bottom: 12px; padding: 14px; transition: var(--trans); position: relative; overflow: hidden; }
 .agenda-card:active { transform: scale(.985); }
+/* Agenda yang selesai diredupkan agar agenda aktif/mendatang langsung terlihat. */
+.agenda-card.agenda-done { opacity: .62; filter: grayscale(.32); }
+.agenda-card.agenda-done::before { background: var(--green); }
 .agenda-card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--prio-color, var(--primary-2)); }
 .agenda-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .agenda-date { font-size: 12.5px; font-weight: 700; color: var(--primary); display: inline-flex; align-items: center; gap: 5px; }
@@ -845,3 +848,13 @@ html[data-theme="dark"] .skel::after { background: linear-gradient(90deg, transp
 canvas.chart { width: 100%; height: 220px; display: block; }
 canvas.chart-sm { height: 150px; }
 canvas.ring { width: 130px; height: 130px; }
+
+/* Perangkat HP: jam dipaksa berada tepat di bawah foto profil. */
+@media (max-width: 639px) {
+  .hero { min-height: 150px; padding-right: 132px; }
+  .hero .clock {
+    position: absolute !important; top: 82px !important; right: 14px !important;
+    z-index: 5; font-size: 17px !important; white-space: nowrap;
+  }
+  .hero .avatar { top: 16px; right: 16px; }
+}
