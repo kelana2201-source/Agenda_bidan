@@ -1010,14 +1010,17 @@ function agendaCard(a) {
   const done = checklistDone(parseList(a.checklist));
   const totalC = parseList(a.checklist).length;
   const prio = a.prioritas || 'Sedang';
-  const lateness = isLate(a) ? '<span class="badge status-Terlambat">⚠️ Terlambat</span>' : '';
+  const t = todayKey();
+  // Agenda lampau yang belum diberi hasil perlu dikonfirmasi, bukan hanya ditandai terlambat.
+  const perluKonfirmasi = a.tanggal < t && ['Belum', 'Berlangsung'].includes(a.status);
+  const statusBadge = perluKonfirmasi
+    ? '<span class="badge agenda-confirm-badge">⚠️ Perlu konfirmasi</span>'
+    : '<span class="badge status-' + st + '">' + st + '</span>';
   return `
-  <button class="card agenda-card ${a.status === 'Selesai' ? 'agenda-done' : ''}" data-action="agenda-detail" data-id="${escapeHtml(a.id)}" style="--prio-color:${PRIO_COLOR[prio] || '#14B8A6'}">
+  <button class="card agenda-card ${a.status === 'Selesai' ? 'agenda-done' : ''} ${perluKonfirmasi ? 'agenda-needs-confirm' : ''}" data-action="agenda-detail" data-id="${escapeHtml(a.id)}" style="--prio-color:${PRIO_COLOR[prio] || '#14B8A6'}">
     <div class="agenda-head">
       <span class="agenda-date">📅 ${fmtTanggal(a.tanggal)} • ${namaHari(a.tanggal)}</span>
-      <span class="badge status-${st}">${st}</span>
-      ${lateness}
-      <span class="badge prio-${prio}">${escapeHtml(prio)}</span>
+      ${statusBadge}
     </div>
     <div class="agenda-name">${escapeHtml(a.namaKegiatan || 'Tanpa nama')}</div>
     <div class="agenda-meta">
@@ -1206,9 +1209,10 @@ function openAgendaDetail(id) {
     ${ck.length ? '<div class="card-title">✅ Checklist</div><div class="mb-12">' + ck.map((c, i) => `
       <label class="check" style="margin:4px 0"><input type="checkbox" data-action="ck-toggle" data-id="${escapeHtml(a.id)}" data-i="${i}" ${c.selesai ? 'checked' : ''}>
       <span style="${c.selesai ? 'text-decoration:line-through;color:var(--text-muted)' : ''}">${escapeHtml(c.teks)}</span></label>`).join('') + '</div>' : ''}
-    <div class="card-title">⚡ Ubah Status</div>
+    <div class="card-title">${a.tanggal < todayKey() && ['Belum', 'Berlangsung'].includes(a.status) ? '⚠️ Konfirmasi hasil kegiatan' : '⚡ Ubah Status'}</div>
+    ${a.tanggal < todayKey() && ['Belum', 'Berlangsung'].includes(a.status) ? '<p class="small muted mb-8">Pilih hasil kegiatan untuk menutup jadwal yang sudah lewat.</p>' : ''}
     <div class="flex flex-wrap mb-12">
-      ${STATUS_LIST.map(s => '<button class="chip ' + (a.status === s ? 'active' : '') + '" data-action="status-set" data-id="' + escapeHtml(a.id) + '" data-val="' + s + '">' + s + '</button>').join('')}
+      ${STATUS_LIST.map(s => '<button class="chip ' + (a.status === s ? 'active' : '') + '" data-action="status-set" data-id="' + escapeHtml(a.id) + '" data-val="' + s + '">' + (s === 'Selesai' ? '✓ Selesai' : s === 'Ditunda' ? '⏸ Ditunda' : s) + '</button>').join('')}
     </div>
     <div class="modal-actions">
       <button class="btn btn-soft" data-action="agenda-edit" data-id="${escapeHtml(a.id)}">✏️ Edit</button>

@@ -1,4 +1,4 @@
-const CACHE = 'agenda-bidan-v7';
+const CACHE = 'agenda-bidan-v8';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.webmanifest', './favicon.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', event => {
