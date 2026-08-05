@@ -112,8 +112,10 @@ const SETTINGS_DEFAULT = (typeof window !== 'undefined' && window.SETTINGS_DEFAU
   namaPuskesmas: '',
   namaDesa: '',
   logo: '', fotoProfil: '', tema: 'system', password: '',
-  spreadsheetId: '',
-  gasUrl: '',
+  // Koneksi database aplikasi yang sudah tersedia. Pengaturan ini dapat diubah
+  // dari menu Pengaturan bila URL Web App diganti/deploy ulang.
+  spreadsheetId: '1nQPoelyCvHHHvCm945DlLI2y4dDrKaFMJkdE-qmvof4',
+  gasUrl: 'https://script.google.com/macros/s/AKfycbwiUG87Cxik3JT3aZ4JplsfCCq8aRt0z5aFRlx48Dg_06mm6XK_8owj8gTX8Z4J4JvGZg/exec',
   sheets: { agenda: 'Agenda', piket: 'JadwalPiket', master: 'MasterKegiatan', settings: 'Pengaturan', log: 'LogAktivitas' },
   telegram: { token: '', chatId: '', aktif: false, jenis: { hariIni: true, besok: true, piket: true, terlambat: true, jam1: false, jam30: false } },
   shifts: JSON.parse(JSON.stringify(SHIFT_DEFAULT)),
@@ -264,6 +266,12 @@ function cacheSettings() { lsSet(K.s_settings, State.settings); }
 
 function loadCache() {
   State.settings = { ...JSON.parse(JSON.stringify(SETTINGS_DEFAULT)), ...lsGet(K.s_settings, {}) };
+  // Migrasi versi sebelumnya: bila cache lokal menyimpan koneksi kosong,
+  // gunakan kembali koneksi database aplikasi yang telah tersedia.
+  if (!String(State.settings.gasUrl || '').trim()) {
+    State.settings.spreadsheetId = SETTINGS_DEFAULT.spreadsheetId;
+    State.settings.gasUrl = SETTINGS_DEFAULT.gasUrl;
+  }
   const d = lsGet(K.s_data, null);
   if (d) { State.agenda = d.agenda || []; State.piket = d.piket || []; State.master = d.master || []; }
 }
@@ -1412,10 +1420,13 @@ function renderPiket() {
       const cls = ['cal-cell'];
       if (!inMonth) cls.push('other');
       if (k === today) cls.push('today');
+      // Minggu dan hari libur nasional menggunakan aksen merah di kalender piket juga.
+      if (day.getDay() === 0 || LIBUR_NASIONAL[k]) cls.push('holiday');
       if (p && k < today) cls.push('cal-cell-past');
       const meta = p ? SHIFT_META(p.shift) : null;
+      const dayColor = (day.getDay() === 0 || LIBUR_NASIONAL[k]) ? '#DC2626' : 'var(--text)';
       cells += `<button class="${cls.join(' ')}" data-action="piket-day" data-val="${k}" title="${p ? 'Shift ' + p.shift : 'Kosong — ketuk untuk set shift'}"
-        style="${p ? 'background:' + meta.warna + '22;border-color:' + meta.warna + ';color:var(--text)' : ''}">
+        style="${p ? 'background:' + meta.warna + '22;border-color:' + meta.warna + ';color:' + dayColor : ''}">
         ${p ? meta.ikon : ''}${day.getDate()}
       </button>`;
     }
@@ -2396,6 +2407,8 @@ function reminderTick() {
 async function syncAll(opts = {}) {
   if (State._syncing) return;
   State._syncing = true;
+  const syncQuick = $('#sync-quick');
+  if (syncQuick) syncQuick.classList.add('syncing');
   setProgress(15);
   try {
     const d = await Store.getAll();
@@ -2435,8 +2448,12 @@ async function syncAll(opts = {}) {
   } catch (err) {
     setProgress(0);
     State.offline = true;
-    $('#offline-banner').classList.remove('hidden');
-    if (!opts.silent) toast('⚠️ Sinkron gagal — menampilkan cache: ' + err.message, 'warn', 4000);
+    // Saat aplikasi baru dibuka, Dashboard tetap bersih; indikator sinkron di
+    // pojok kanan atas menjadi satu-satunya tanda proses/koneksi.
+    if (!opts.silent) {
+      $('#offline-banner').classList.remove('hidden');
+      toast('⚠️ Sinkron gagal — menampilkan cache: ' + err.message, 'warn', 4000);
+    }
     // pastikan ada data untuk demo pertama kali
     if (isDemoMode() && !State.master.length) {
       const db = await Demo.getAll();
@@ -2446,6 +2463,8 @@ async function syncAll(opts = {}) {
     }
   } finally {
     State._syncing = false;
+    const syncQuick = $('#sync-quick');
+    if (syncQuick) syncQuick.classList.remove('syncing');
   }
 }
 
@@ -2989,7 +3008,8 @@ async function init() {
   // Tanpa layar login — langsung masuk ke Dashboard
   $('#app-shell').classList.remove('hidden');
   renderSidebarUser();
-  navigate('dashboard', true);
+  // Dashboard dirender langsung dari cache, lalu data diperbarui di latar belakang.
+  navigate('dashboard');
   syncAll({ silent: true });
 }
 
